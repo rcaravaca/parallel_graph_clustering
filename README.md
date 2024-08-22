@@ -1,1 +1,1 @@
-# parallel_graph_clustering
+# Parallel Grah Clustering
