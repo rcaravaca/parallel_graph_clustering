@@ -28,8 +28,9 @@
  * @param flatWeights Flat array for storing the edge weights.
  * @param weightSize Size of the flatWeights array.
  */
-__global__ void addNodeToGraphCUDA(int* adjList, int* adjListSizes, int* Nodes, int* numNodes, int maxNodes, 
-                                   const int* rows, const int* cols, const int* energies, int numDigits);
+__global__ void addNodeToGraphCUDA(int* adjList, int* adjListSizes, int* nodeIDs, int* numNodes, int maxNodes,
+                                   const int* rows, const int* cols, const int* energies, int numDigits,
+                                   int* flatWeights);
 
 
 #endif // PROCESS_GRAPH_H

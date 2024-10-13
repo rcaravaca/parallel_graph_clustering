@@ -89,7 +89,13 @@ std::vector<Event> readJSON(const std::string& filename) {
                 // Add the digit to the current event
                 current_event.digits.push_back(Digit{row, col, energy});
                 // in_digits_section = false;
+                
+               
             }
+
+
+
+
         }// end if Process the digits
     }// end of while
 

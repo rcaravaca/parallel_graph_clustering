@@ -5,8 +5,7 @@
  * @brief Private method to build the ID by concatenating row and col.
  */
 void Digit::buildID() {
-    // ID = std::to_string(row) + "_" + std::to_string(col);
-    // ID = row * 10 + col;
+
     ID = ( row * 66 ) + col ;
 }
 

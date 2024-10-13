@@ -46,6 +46,16 @@ int main() {
     // Print Graph Nodes summary
     graph.GraphSummary();
 
+    graph.printGraph();
+
+    // Check for duplicate IDs
+    bool hasDuplicates = graph.checkForDuplicateIDs();
+
+    if (hasDuplicates) {
+        std::cout << "There are duplicate IDs in the graph." << std::endl;
+    } else {
+        std::cout << "No duplicate IDs found in the graph." << std::endl;
+    }
 
     return 0;
 }

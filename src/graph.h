@@ -7,6 +7,7 @@
 #include "Digit.h"
 
 #include <cmath>
+#include <unordered_set>
 
 
 /**
@@ -30,7 +31,7 @@ public:
      * @param destination Destination node of the edge.
      * @param weight Weight of the edge (default is 1).
      */
-    void addEdge(const Digit& source, const Digit& destination);
+    void addEdge(const Digit& source, const Digit& destination, int weight);
 
     /**
      * @brief Adds a new node to the graph (only in host-side Graph object).
@@ -73,9 +74,21 @@ public:
      */
     void GraphSummary() const;
 
+    /**
+     * @brief Checks if there are any nodes in the graph with duplicate IDs.
+     * 
+     * This function traverses the adjacency list of the graph and checks if there are
+     * any nodes with the same ID. If duplicate IDs are found, they are printed out.
+     * 
+     * @return true if duplicate node IDs are found, false otherwise.
+     */
+    bool checkForDuplicateIDs() const;
+
 private:
     // std::vector<std::vector<std::pair<int, int>>> adjList;  ///< Adjacency list representing the graph (node, weight).
-    std::vector<std::vector<Digit>> adjList;  ///< Adjacency list, where each vector contains a node and its neighbors.
+    // std::vector<std::vector<Digit>> adjList;  ///< Adjacency list, where each vector contains a node and its neighbors.
+    std::vector<std::vector<std::pair<Digit, int>>> adjList;  ///< Adjacency list with nodes and weights.
+
 };
 
 #endif // GRAPH_H
