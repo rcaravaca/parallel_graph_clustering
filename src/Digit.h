@@ -37,6 +37,7 @@ public:
      * @param c The column value.
      * @param e The energy value.
      */
+    Digit();
     Digit(int r, int c, int e);
 
     /**

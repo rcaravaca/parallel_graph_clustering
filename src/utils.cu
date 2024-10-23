@@ -1,15 +1,6 @@
 // src/utils.cu
 #include "utils.h"
 
-#include <cstdlib>
-#include <ctime>
-#include <fstream>
-#include <sstream>
-#include <iostream>
-
-#include <vector>
-#include <cmath>
-#include <limits>
 
 std::string trim(const std::string& str) {
     const char* whitespace = " \t\n\r\f\v";
@@ -168,4 +159,47 @@ void DigitEnergySummary(const std::vector<Digit>& digits) {
     std::cout << "Digits with energy > 50: " << countGreaterThan50 << std::endl;
     std::cout << "##############################" << std::endl<< std::endl;
 
+}
+
+void removeDuplicatesAndNegatives(std::vector<Digit>& digits) {
+    std::map<std::pair<int, int>, Digit> bestDigits;  // Map to store the best Digit per (row, col) pair
+    int negativeCount = 0;  // Counter for digits with negative energy
+    int duplicateCount = 0; // Counter for duplicate digits (with lower energy)
+
+    // Loop through each digit in the vector
+    for (const auto& digit : digits) {
+        // Check if the digit has negative energy
+        if (digit.getEnergy() < 0) {
+            negativeCount++;  // Increment the negative energy counter
+            continue;  // Skip adding this digit to the map
+        }
+
+        // Create a key using the (row, col) pair
+        std::pair<int, int> key = {digit.getRow(), digit.getCol()};
+
+        // If a node already exists at this position and has lower energy, it is considered a duplicate
+        if (bestDigits.find(key) != bestDigits.end()) {
+            if (digit.getEnergy() > bestDigits[key].getEnergy()) {
+                // If the new digit has higher energy, replace the existing one
+                duplicateCount++;  // Count the replaced node as a duplicate
+                bestDigits[key] = digit;  // Replace the node with higher energy
+            } else {
+                // If the new digit has lower energy, just count it as a duplicate and ignore it
+                duplicateCount++;
+            }
+        } else {
+            // If no duplicate, add the digit to the map
+            bestDigits[key] = digit;
+        }
+    }
+
+    // Clear the original vector and add the remaining best digits
+    digits.clear();
+    for (const auto& entry : bestDigits) {
+        digits.push_back(entry.second);
+    }
+
+    // Print the summary of removed nodes
+    std::cout << "\n##############################\nRemoved " << negativeCount << " nodes with negative energy." << std::endl;
+    std::cout << "Removed " << duplicateCount << " duplicate nodes with less energy.\n##############################" << std::endl;
 }

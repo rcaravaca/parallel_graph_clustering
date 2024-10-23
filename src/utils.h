@@ -5,6 +5,17 @@
 #include <string>
 #include <vector>
 #include "Digit.h"
+#include <unordered_map>
+
+#include <cstdlib>
+#include <ctime>
+#include <fstream>
+#include <sstream>
+#include <iostream>
+
+#include <cmath>
+#include <limits>
+#include <map>
 
 /**
  * @brief Helper function to trim leading and trailing whitespace from a string.
@@ -37,6 +48,13 @@ std::vector<Event> readJSON(const std::string& filename);
  */
 void DigitEnergySummary(const std::vector<Digit>& digits);
 
-
+/**
+ * @brief Removes duplicates from a vector of Digits, keeping the one with the highest energy.
+ *        Also removes any Digit with negative energy.
+ *        Prints the number of nodes removed due to negative energy and duplicates.
+ * 
+ * @param digits The vector of Digits to be filtered.
+ */
+void removeDuplicatesAndNegatives(std::vector<Digit>& digits);
 
 #endif // UTILS_H

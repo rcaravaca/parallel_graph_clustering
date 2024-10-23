@@ -42,27 +42,30 @@ __global__ void addNodeToGraphCUDA(int* adjList, int* adjListSizes, int* Nodes, 
             };
 
             // Iterate over the potential neighbors
-            // for (int neighborIdx = 0; neighborIdx < 8; ++neighborIdx) {
-            //     int neighborRow = rows[idx] + neighbors[neighborIdx][0];  // Calculate neighbor row
-            //     int neighborCol = cols[idx] + neighbors[neighborIdx][1];  // Calculate neighbor col
+            for (int neighborIdx = 0; neighborIdx < 8; ++neighborIdx) {
+                int neighborRow = rows[idx] + neighbors[neighborIdx][0];  // Calculate neighbor row
+                int neighborCol = cols[idx] + neighbors[neighborIdx][1];  // Calculate neighbor col
 
-            //     // Find the neighbor in the input arrays (assuming sorted or accessible by index)
-            //     for (int j = 0; j < numDigits; ++j) {
-            //         if (rows[j] == neighborRow && cols[j] == neighborCol) {
-            //             int adjIndex = atomicAdd(&adjListSizes[NodeIncr], 1);  // Increment adjacency list size
+                // Find the neighbor in the input arrays (assuming sorted or accessible by index)
+                for (int j = 0; j < numDigits; ++j) {
+                    if (rows[j] == neighborRow && cols[j] == neighborCol) {
+                        
+                        if (energies[j] > 0) {
 
-            //             if (energies[j] > 0) {
-            //             // Store the neighbor in the adjacency list
-            //                 adjList[NodeIncr * 8 + adjIndex * 4] = neighborRow;
-            //                 adjList[NodeIncr * 8 + adjIndex * 4 + 1] = neighborCol;
-            //                 adjList[NodeIncr * 8 + adjIndex * 4 + 2] = energies[j];  // Store neighbor energy
+                            int adjIndex = atomicAdd(&adjListSizes[NodeIncr], 1);  // Increment adjacency list size
+                        // Store the neighbor in the adjacency list
+                            int offset = NodeIncr * 8 * 4 + adjIndex * 4;  // Adjusted index for neighbors
+                            adjList[offset] = neighborRow;
+                            adjList[offset + 1] = neighborCol;
+                            adjList[offset + 2] = energies[j];  // Store neighbor energy
 
-            //                 // Assign weight (for example, based on distance or constant)
-            //                 flatWeights[NodeIncr * 8 + adjIndex] = 1;  // Example constant weight
-            //             }
-            //         }
-            //     }
-            // }
+                            // Assign weight based on distance (for example)
+                            // flatWeights[offset / 4] = abs(rows[idx] - neighborRow) + abs(cols[idx] - neighborCol);  // Calculate weight based on Manhattan distance
+                            flatWeights[offset] = 1;
+                        }
+                    }
+                }
+            }
 
         }
     }

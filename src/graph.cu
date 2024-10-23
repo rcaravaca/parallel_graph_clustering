@@ -2,18 +2,6 @@
 
 Graph::Graph(){};
 
-// void Graph::addEdge(const Digit& source, const Digit& destination) {
-//     // Buscar el nodo fuente en adjList
-//     for (auto& nodeList : adjList) {
-//         if (nodeList.front().getID() == source.getID()) {
-//             nodeList.push_back(destination);  // Add the destination node to neighbors list
-//             return;
-//         }
-//     }
-
-//     std::cerr << "Error: Source node not founded." << std::endl;
-// }
-
 void Graph::addEdge(const Digit& source, const Digit& destination, int weight) {
     // Search for the source node in adjList
     for (auto& nodeList : adjList) {
@@ -27,15 +15,11 @@ void Graph::addEdge(const Digit& source, const Digit& destination, int weight) {
     std::cerr << "Error: Source node not found." << std::endl;
 }
 
-// void Graph::addNode(const Digit& digit) {
-//     adjList.push_back(std::vector<Digit>{digit});  // the first elemnet is the node, without neighbors
-// }
-
 void Graph::addNode(const Digit& newNode) {
     // Check if the node already exists in the graph (optional)
     for (const auto& nodeList : adjList) {
         if (nodeList.front().first.getID() == newNode.getID()) {
-            std::cerr << "Error: Node with ID " << newNode.getID() << " already exists in the graph." << std::endl;
+            std::cerr << "Error: Node with ID " << newNode.getID() << " row: " << newNode.getRow()<< " col: " << newNode.getCol() <<" already exists in the graph." << std::endl;
             return;
         }
     }
@@ -61,21 +45,6 @@ const Digit& Graph::getNode(int index) const {
     }
 }
 
-// void Graph::printGraph() const {
-//     for (const auto& nodeList : adjList) {
-//         const Digit& node = nodeList.front();
-//         std::cout << "Node " << node.getID() << " (Row=" << node.getRow() 
-//                   << ", Col=" << node.getCol() << ", Energy=" << node.getEnergy() << "): ";
-
-//         for (size_t i = 1; i < nodeList.size(); ++i) {
-//             const Digit& neighbor = nodeList[i];
-//             std::cout << "Digit(ID=" << neighbor.getID() << ", Row=" << neighbor.getRow()
-//                       << ", Col=" << neighbor.getCol() << ", Energy=" << neighbor.getEnergy() << ") ";
-//         }
-//         std::cout << std::endl;
-//     }
-// }
-
 void Graph::printGraph() const {
     int count = 0;  // Counter to keep track of the number of nodes printed
 
@@ -98,7 +67,7 @@ void Graph::printGraph() const {
             int weight = nodeList[i].second;  // Retrieve the weight for this neighbor
 
             // Print the neighbor and the edge weight
-            std::cout << "Neighbor " << neighbor.getID() << " (Weight: " << weight << "), ";
+            std::cout << "Neighbor (" << neighbor.getRow() << ","<< neighbor.getCol() << ") (Weight: " << weight << "), ";
         }
 
         std::cout << std::endl;  // End of this node's adjacency list
@@ -117,22 +86,14 @@ void Graph::flattenGraph(std::vector<int>& flatAdjList, std::vector<int>& adjLis
 
     for (const auto& nodeList : adjList) {
         
-        // nodes.push_back(nodeList.front().getID());
         const Digit& node = nodeList.front().first;  // First element is the node itself
         
         Nodes.push_back(node.getRow());
         Nodes.push_back(node.getCol());
         Nodes.push_back(node.getEnergy());
-
-        Nodes.push_back(nodeList.front().second);
         
         adjListSizes.push_back(flatAdjList.size()); 
         for (size_t i = 1; i < nodeList.size(); ++i) {
-            // flatAdjList.push_back(nodeList[i].getID());
-            // flatAdjList.push_back(nodeList[i].getRow());
-            // flatAdjList.push_back(nodeList[i].getCol());
-            // flatAdjList.push_back(nodeList[i].getEnergy());
-
             const Digit& neighbor = nodeList[i].first;  // Neighbor and weight
             flatAdjList.push_back(neighbor.getRow());
             flatAdjList.push_back(neighbor.getCol());
@@ -152,16 +113,16 @@ void Graph::rebuildGraph(const std::vector<int>& flatAdjList, const std::vector<
     for (int i = 0; i < numNodes; ++i) {
         
         // Every node has 3 values: row, col & energy
-        int row = Nodes[i * 4]; 
-        int col = Nodes[i * 4 + 1];
-        int energy = Nodes[i * 4 + 2];
+        int row = Nodes[i * 3]; 
+        int col = Nodes[i * 3 + 1];
+        int energy = Nodes[i * 3 + 2];
 
         // std::cout << "Nodo 0: Row=" << row << ", Col=" << col << ", Energy=" << energy << std::endl;
 
         // Make then main node and add to graph
         Digit node(row, col, energy);
-        adjList.push_back({{node, 0}});  // The first entry in the list, weight is 0 for the node itself
-        // addNode(node);
+        // adjList.push_back({{node, 0}});  // The first entry in the list, weight is 0 for the node itself
+        addNode(node);
 
         // Get the neighbor of node
         int startIdx = adjListSizes[i];  // Begining index of flatAdjList
@@ -177,8 +138,8 @@ void Graph::rebuildGraph(const std::vector<int>& flatAdjList, const std::vector<
                 int weight = flatAdjList[adjIndex++];  // Retrieve the weight
                 
                 Digit neighbor(neighborRow, neighborCol, neighborEnergy);
-                adjList.back().push_back({neighbor, weight});  // Add neighbor and weight
-                // addEdge(node, neighbor, weight);
+                // adjList.back().push_back({neighbor, weight});  // Add neighbor and weight
+                addEdge(node, neighbor, weight);
 
             }
         }
@@ -186,28 +147,25 @@ void Graph::rebuildGraph(const std::vector<int>& flatAdjList, const std::vector<
 }
 
 void Graph::GraphSummary() const {
-    // Verificar si el grafo está vacío
+
     if (adjList.empty()) {
         std::cout << "Graph is empty." << std::endl;
         return;
     }
 
-    // Variables para los cálculos
     int numNodes = 0;
     int minEnergy = INT_MAX;
     int maxEnergy = INT_MIN;
     double sumEnergy = 0;
-    double sumEnergySquared = 0;  // Para calcular la desviación estándar
+    double sumEnergySquared = 0; 
 
-    // Recorrer todos los nodos y calcular los valores de energía
     for (const auto& nodeList : adjList) {
         if (!nodeList.empty()) {
-            const Digit& node = nodeList.front().first;  // El nodo principal de la lista de adyacencia
+            const Digit& node = nodeList.front().first;  
 
             int energy = node.getEnergy();
             numNodes++;
 
-            // Actualizar el valor mínimo y máximo de energía
             if (energy < minEnergy) {
                 minEnergy = energy;
             }
@@ -215,18 +173,15 @@ void Graph::GraphSummary() const {
                 maxEnergy = energy;
             }
 
-            // Acumular la suma de las energías y la suma de las energías al cuadrado
             sumEnergy += energy;
             sumEnergySquared += energy * energy;
         }
     }
 
-    // Cálculos finales
     double meanEnergy = sumEnergy / numNodes;
     double variance = (sumEnergySquared / numNodes) - (meanEnergy * meanEnergy);
     double stdDeviation = sqrt(variance);
 
-    // Imprimir el resumen del grafo
     std::cout << "\n##############################" << std::endl;
     std::cout << "Graph Summary:" << std::endl;
     std::cout << "Number of nodes: " << numNodes << std::endl;

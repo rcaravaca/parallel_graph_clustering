@@ -11,10 +11,10 @@ void GraphInsertion(Graph& graph, int maxNodes, const std::vector<Digit>& digits
     std::vector<int> flatWeights;
     int numNodes;
 
-    // Aplanar el grafo en arrays
+    // Flatten the graph into arrays
     graph.flattenGraph(flatAdjList, adjListSizes, Nodes, numNodes);
 
-    // Crear arrays planos para los datos de los Digits
+    // Create flat arrays for the Digit data
     int numDigits = digits.size();
     std::vector<int> rows(numDigits);
     std::vector<int> cols(numDigits);
@@ -26,9 +26,9 @@ void GraphInsertion(Graph& graph, int maxNodes, const std::vector<Digit>& digits
         energies[i] = digits[i].getEnergy();
     }
 
-    // Calcular el tamaño necesario para Nodes y adjList
-    int NodeSize = maxNodes * 4;       // 3 enteros por nodo + 1 weight
-    int adjListSize = maxNodes * 8 * 4;  // Hasta 8 vecinos por nodo, cada uno con 4 enteros
+    // Calculate the necessary size for Nodes and adjList
+    int NodeSize = maxNodes * 4;       // 3 integers per node + 1 weight
+    int adjListSize = maxNodes * 8 * 4;  // Up to 8 neighbors per node, each with 4 integers
     int weightSize = maxNodes * 8;     // 1 weight per neighbor, up to 8 neighbors per node
 
     Nodes.resize(NodeSize);
@@ -36,38 +36,37 @@ void GraphInsertion(Graph& graph, int maxNodes, const std::vector<Digit>& digits
     flatAdjList.resize(adjListSize);
     flatWeights.resize(weightSize);
 
-    // Asignar memoria en el dispositivo
+    // Allocate memory on the device
     int *d_adjList, *d_adjListSizes, *d_Nodes, *d_numNodes, *d_rows, *d_cols, *d_energies, *d_flatWeights;
-    cudaMalloc(&d_adjList, adjListSize * sizeof(int));  // Reservar suficiente espacio para adjList
-    cudaMalloc(&d_adjListSizes, maxNodes * sizeof(int));  // Una entrada por cada nodo
-    cudaMalloc(&d_Nodes, NodeSize * sizeof(int));  // Reservar suficiente espacio para los nodos
-    cudaMalloc(&d_numNodes, sizeof(int));  // Un entero para el número de nodos
-    cudaMalloc(&d_rows, rows.size() * sizeof(int));  // Filas de los Digits
-    cudaMalloc(&d_cols, cols.size() * sizeof(int));  // Columnas de los Digits
-    cudaMalloc(&d_energies, energies.size() * sizeof(int));  // Energías de los Digits
+    cudaMalloc(&d_adjList, adjListSize * sizeof(int));  // Allocate enough space for adjList
+    cudaMalloc(&d_adjListSizes, maxNodes * sizeof(int));  // One entry per node
+    cudaMalloc(&d_Nodes, NodeSize * sizeof(int));  // Allocate enough space for nodes
+    cudaMalloc(&d_numNodes, sizeof(int));  // One integer for the number of nodes
+    cudaMalloc(&d_rows, rows.size() * sizeof(int));  // Rows of the Digits
+    cudaMalloc(&d_cols, cols.size() * sizeof(int));  // Columns of the Digits
+    cudaMalloc(&d_energies, energies.size() * sizeof(int));  // Energies of the Digits
     cudaMalloc(&d_flatWeights, weightSize * sizeof(int));  // Weights of the edges
 
-    // Copiar datos al dispositivo
+    // Copy data to the device
     cudaMemcpy(d_adjList, flatAdjList.data(), adjListSize * sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(d_adjListSizes, adjListSizes.data(), maxNodes * sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(d_Nodes, Nodes.data(), NodeSize * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_numNodes, &numNodes, sizeof(int), cudaMemcpyHostToDevice);  // Inicializar numNodes a 0 en el dispositivo
+    cudaMemcpy(d_numNodes, &numNodes, sizeof(int), cudaMemcpyHostToDevice);  // Initialize numNodes to 0 on the device
     cudaMemcpy(d_rows, rows.data(), rows.size() * sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(d_cols, cols.data(), cols.size() * sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(d_energies, energies.data(), energies.size() * sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(d_flatWeights, flatWeights.data(), flatWeights.size() * sizeof(int), cudaMemcpyHostToDevice);
 
-
-    // Configuración del kernel
+    // Kernel configuration
     int blockSize = 256;
-    int numBlocks = (numDigits + blockSize - 1) / blockSize;  // Calcular número de bloques
+    int numBlocks = (numDigits + blockSize - 1) / blockSize;  // Calculate number of blocks
 
-    // Lanzar el kernel para agregar los nodos
+    // Launch the kernel to add nodes
     addNodeToGraphCUDA<<<numBlocks, blockSize>>>(d_adjList, d_adjListSizes, d_Nodes, d_numNodes, maxNodes, d_rows, d_cols, d_energies, numDigits, d_flatWeights);
-    // Sincronizar el dispositivo
+    // Synchronize the device
     cudaDeviceSynchronize();
 
-    // Copiar resultados de vuelta al host
+    // Copy results back to the host
     cudaMemcpy(flatAdjList.data(), d_adjList, adjListSize * sizeof(int), cudaMemcpyDeviceToHost);
     cudaMemcpy(adjListSizes.data(), d_adjListSizes, maxNodes * sizeof(int), cudaMemcpyDeviceToHost);
     cudaMemcpy(Nodes.data(), d_Nodes, NodeSize * sizeof(int), cudaMemcpyDeviceToHost);
@@ -76,10 +75,10 @@ void GraphInsertion(Graph& graph, int maxNodes, const std::vector<Digit>& digits
 
     std::cout << "GraphInsertion: Count of added Nodes: " << numNodes << std::endl;
 
-    // Reconstruir el grafo en el host
+    // Rebuild the graph on the host
     graph.rebuildGraph(flatAdjList, adjListSizes, Nodes, numNodes);
 
-    // Liberar memoria
+    // Free memory
     cudaFree(d_adjList);
     cudaFree(d_adjListSizes);
     cudaFree(d_Nodes);

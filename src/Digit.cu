@@ -12,9 +12,12 @@ void Digit::buildID() {
 /**
  * @brief Constructor for the Digit class.
  */
+Digit::Digit() : row(0), col(0), energy(0) {}
+
 Digit::Digit(int r, int c, int e) : row(r), col(c), energy(e) {
     buildID();
 }
+
 
 /**
  * @brief Getter for the row value.
