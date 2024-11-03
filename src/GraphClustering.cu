@@ -8,11 +8,10 @@ void GraphInsertion(Graph& graph, int maxNodes, const std::vector<Digit>& digits
     std::vector<int> flatAdjList;
     std::vector<int> adjListSizes;
     std::vector<int> Nodes;
-    std::vector<int> flatWeights;
     int numNodes;
 
     // Flatten the graph into arrays
-    graph.flattenGraph(flatAdjList, adjListSizes, Nodes, numNodes);
+    graph.flattenGraph(flatAdjList, adjListSizes, Nodes, numNodes); // TODO: What is this for? This is not doing anything atm
 
     // Create flat arrays for the Digit data
     int numDigits = digits.size();
@@ -27,17 +26,15 @@ void GraphInsertion(Graph& graph, int maxNodes, const std::vector<Digit>& digits
     }
 
     // Calculate the necessary size for Nodes and adjList
-    int NodeSize = maxNodes * 4;       // 3 integers per node + 1 weight
-    int adjListSize = maxNodes * 8 * 4;  // Up to 8 neighbors per node, each with 4 integers
-    int weightSize = maxNodes * 8;     // 1 weight per neighbor, up to 8 neighbors per node
+    int NodeSize = maxNodes * 3;       // 3 integers per node (row, col, energy)
+    int adjListSize = maxNodes * 8 * 4;  // Up to 8 neighbors per node, each with 4 integers (row, col, energy, weight of the edge)
 
     Nodes.resize(NodeSize);
     adjListSizes.resize(NodeSize);
     flatAdjList.resize(adjListSize);
-    flatWeights.resize(weightSize);
 
     // Allocate memory on the device
-    int *d_adjList, *d_adjListSizes, *d_Nodes, *d_numNodes, *d_rows, *d_cols, *d_energies, *d_flatWeights;
+    int *d_adjList, *d_adjListSizes, *d_Nodes, *d_numNodes, *d_rows, *d_cols, *d_energies;
     cudaMalloc(&d_adjList, adjListSize * sizeof(int));  // Allocate enough space for adjList
     cudaMalloc(&d_adjListSizes, maxNodes * sizeof(int));  // One entry per node
     cudaMalloc(&d_Nodes, NodeSize * sizeof(int));  // Allocate enough space for nodes
@@ -45,7 +42,6 @@ void GraphInsertion(Graph& graph, int maxNodes, const std::vector<Digit>& digits
     cudaMalloc(&d_rows, rows.size() * sizeof(int));  // Rows of the Digits
     cudaMalloc(&d_cols, cols.size() * sizeof(int));  // Columns of the Digits
     cudaMalloc(&d_energies, energies.size() * sizeof(int));  // Energies of the Digits
-    cudaMalloc(&d_flatWeights, weightSize * sizeof(int));  // Weights of the edges
 
     // Copy data to the device
     cudaMemcpy(d_adjList, flatAdjList.data(), adjListSize * sizeof(int), cudaMemcpyHostToDevice);
@@ -55,14 +51,13 @@ void GraphInsertion(Graph& graph, int maxNodes, const std::vector<Digit>& digits
     cudaMemcpy(d_rows, rows.data(), rows.size() * sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(d_cols, cols.data(), cols.size() * sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(d_energies, energies.data(), energies.size() * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_flatWeights, flatWeights.data(), flatWeights.size() * sizeof(int), cudaMemcpyHostToDevice);
 
     // Kernel configuration
     int blockSize = 256;
     int numBlocks = (numDigits + blockSize - 1) / blockSize;  // Calculate number of blocks
 
     // Launch the kernel to add nodes
-    addNodeToGraphCUDA<<<numBlocks, blockSize>>>(d_adjList, d_adjListSizes, d_Nodes, d_numNodes, maxNodes, d_rows, d_cols, d_energies, numDigits, d_flatWeights);
+    addNodeToGraphCUDA<<<numBlocks, blockSize>>>(d_adjList, d_adjListSizes, d_Nodes, d_numNodes, maxNodes, d_rows, d_cols, d_energies, numDigits);
     // Synchronize the device
     cudaDeviceSynchronize();
 
@@ -71,7 +66,6 @@ void GraphInsertion(Graph& graph, int maxNodes, const std::vector<Digit>& digits
     cudaMemcpy(adjListSizes.data(), d_adjListSizes, maxNodes * sizeof(int), cudaMemcpyDeviceToHost);
     cudaMemcpy(Nodes.data(), d_Nodes, NodeSize * sizeof(int), cudaMemcpyDeviceToHost);
     cudaMemcpy(&numNodes, d_numNodes, sizeof(int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(flatWeights.data(), d_flatWeights, weightSize * sizeof(int), cudaMemcpyDeviceToHost);
 
     std::cout << "GraphInsertion: Count of added Nodes: " << numNodes << std::endl;
 
@@ -86,7 +80,6 @@ void GraphInsertion(Graph& graph, int maxNodes, const std::vector<Digit>& digits
     cudaFree(d_rows);
     cudaFree(d_cols);
     cudaFree(d_energies);
-    cudaFree(d_flatWeights);
     
     std::cout << "GraphInsertion: Done" << std::endl;
 
