@@ -2,7 +2,7 @@
 #include "processGraph.h"
 
 __global__ void addNodeToGraphCUDA(int* adjList, int* adjListSizes, int* Nodes, int* numNodes, int maxNodes,
-                                   const int* rows, const int* cols, const int* energies, int numDigits) {
+                                   const int* rows, const int* cols, const int* energies, int numDigits, int* flatWeights) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     // Ensure we do not exceed the number of Digits
@@ -20,10 +20,10 @@ __global__ void addNodeToGraphCUDA(int* adjList, int* adjListSizes, int* Nodes, 
                 return;
             }
 
-            // Assign the new node in the list of Nodes
+            // Assign the new node in the list of Nodes. TODO: coalesce memory access everywhere
             Nodes[NodeIncr * 3] = rows[idx];
             Nodes[NodeIncr * 3 + 1] = cols[idx];   
-            Nodes[NodeIncr * 3 + 2] = energies[idx];  
+            Nodes[NodeIncr * 3 + 2] = energies[idx];
 
             // Initialize the adjacency list for this node (no neighbors yet)
             adjListSizes[NodeIncr] = 0;
@@ -41,7 +41,7 @@ __global__ void addNodeToGraphCUDA(int* adjList, int* adjListSizes, int* Nodes, 
             };
 
             int numNeighbors = 0;
-            int offset = NodeIncr * 8 * 4;  // Adjusted index for neighbors
+            int offset = NodeIncr * 8 * 3;  // Adjusted index for neighbors
             
             // Iterate over the potential neighbors
             for (int neighborIdx = 0; neighborIdx < 8; ++neighborIdx) {
@@ -61,13 +61,14 @@ __global__ void addNodeToGraphCUDA(int* adjList, int* adjListSizes, int* Nodes, 
                             adjList[offset] = neighborRow;
                             adjList[offset + 1] = neighborCol;
                             adjList[offset + 2] = energies[j];  // Store neighbor energy
-                            adjList[offset + 3] = 1; // Assign weight of 1 for now
+                            
+                            flatWeights[NodeIncr * 8 + numNeighbors] = 1; // Assign weight of 1 for now
 
                             // Assign weight based on distance (for example)
                             // flatWeights[offset / 4] = abs(rows[idx] - neighborRow) + abs(cols[idx] - neighborCol);  // Calculate weight based on Manhattan distance
 
                             // Increment the offset for the next neighbor
-                            offset += 4;
+                            offset += 3;
 
                             // Increment the number of neighbors for this node
                             numNeighbors++;

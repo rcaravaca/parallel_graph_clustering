@@ -103,7 +103,7 @@ void Graph::flattenGraph(std::vector<int>& flatAdjList, std::vector<int>& adjLis
     }
 }
 
-void Graph::rebuildGraph(const std::vector<int>& flatAdjList, const std::vector<int>& adjListSizes, const std::vector<int>& Nodes, int numNodes) {
+void Graph::rebuildGraph(const std::vector<int>& flatAdjList, const std::vector<int>& adjListSizes, const std::vector<int>& weights, const std::vector<int>& Nodes, int numNodes) {
     
     adjList.clear();  // clean the graph
 
@@ -124,20 +124,21 @@ void Graph::rebuildGraph(const std::vector<int>& flatAdjList, const std::vector<
 
         int numNeighbors = adjListSizes[i];
 
-        int offset = i * 8 * 4;  // Adjusted index for neighbors (8 neighbors, 4 values each)
+        int offset = i * 8 * 3;  // Adjusted index for neighbors (8 neighbors, 3 values each)
 
         // add the neighbors
         for (int j = 0; j < numNeighbors; ++j) {
             int neighborRow = flatAdjList[offset];
             int neighborCol = flatAdjList[offset + 1];
             int neighborEnergy = flatAdjList[offset + 2];
-            int weight = flatAdjList[offset + 3];  // Retrieve the weight
+
+            int weight = weights[i * 8 + j];  // Retrieve the weight
 
             Digit neighbor(neighborRow, neighborCol, neighborEnergy);
             // adjList.back().push_back({neighbor, weight});  // Add neighbor and weight
             addEdge(node, neighbor, weight);
 
-            offset += 4;  // Adjust the offset for the next neighbor
+            offset += 3;  // Adjust the offset for the next neighbor
         }
     }
 }

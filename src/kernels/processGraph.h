@@ -24,9 +24,10 @@
  * @param cols Array of column indices of the nodes to be added.
  * @param energies Array of energy values of the nodes to be added.
  * @param numDigits Number of nodes to be processed.
+ * @param flatWeights Flat array for storing the edge weights.
  */
 __global__ void addNodeToGraphCUDA(int* adjList, int* adjListSizes, int* nodeIDs, int* numNodes, int maxNodes,
-                                   const int* rows, const int* cols, const int* energies, int numDigits);
+                                   const int* rows, const int* cols, const int* energies, int numDigits, int* flatWeights);
 
 
 #endif // PROCESS_GRAPH_H
