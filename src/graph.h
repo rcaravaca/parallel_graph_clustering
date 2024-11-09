@@ -67,7 +67,7 @@ public:
     /**
      * @brief Rebuild the graph from flatten arrays.
      */
-    void rebuildGraph(const std::vector<int>& flatAdjList, const std::vector<int>& adjListSizes, const std::vector<int>& Nodes, int numNodes);
+    void rebuildGraph(const std::vector<int>& flatAdjList, const std::vector<int>& adjListSizes, const std::vector<int>& weights, const std::vector<int>& Nodes, int numNodes);
 
     /**
      * @brief Print a summary of inserted nodes

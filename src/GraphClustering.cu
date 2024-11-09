@@ -12,7 +12,7 @@ void GraphInsertion(Graph& graph, int maxNodes, const std::vector<Digit>& digits
     int numNodes;
 
     // Flatten the graph into arrays
-    graph.flattenGraph(flatAdjList, adjListSizes, Nodes, numNodes);
+    graph.flattenGraph(flatAdjList, adjListSizes, Nodes, numNodes); // TODO: What is this for? This is not doing anything atm
 
     // Create flat arrays for the Digit data
     int numDigits = digits.size();
@@ -27,12 +27,12 @@ void GraphInsertion(Graph& graph, int maxNodes, const std::vector<Digit>& digits
     }
 
     // Calculate the necessary size for Nodes and adjList
-    int NodeSize = maxNodes * 4;       // 3 integers per node + 1 weight
-    int adjListSize = maxNodes * 8 * 4;  // Up to 8 neighbors per node, each with 4 integers
-    int weightSize = maxNodes * 8;     // 1 weight per neighbor, up to 8 neighbors per node
+    int NodeSize = maxNodes * 3;       // 3 integers per node (row, col, energy)
+    int adjListSize = maxNodes * 8 * 3;  // Up to 8 neighbors per node, each with 3 integers (row, col, energy)
+    int weightSize = maxNodes * 8; // Up to 8 neighbors per node, each with 1 value (weight of the edge)
 
     Nodes.resize(NodeSize);
-    adjListSizes.resize(NodeSize);
+    adjListSizes.resize(maxNodes);
     flatAdjList.resize(adjListSize);
     flatWeights.resize(weightSize);
 
@@ -76,7 +76,7 @@ void GraphInsertion(Graph& graph, int maxNodes, const std::vector<Digit>& digits
     std::cout << "GraphInsertion: Count of added Nodes: " << numNodes << std::endl;
 
     // Rebuild the graph on the host
-    graph.rebuildGraph(flatAdjList, adjListSizes, Nodes, numNodes);
+    graph.rebuildGraph(flatAdjList, adjListSizes, flatWeights, Nodes, numNodes);
 
     // Free memory
     cudaFree(d_adjList);

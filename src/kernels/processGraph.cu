@@ -2,8 +2,7 @@
 #include "processGraph.h"
 
 __global__ void addNodeToGraphCUDA(int* adjList, int* adjListSizes, int* Nodes, int* numNodes, int maxNodes,
-                                   const int* rows, const int* cols, const int* energies, int numDigits,
-                                   int* flatWeights) {
+                                   const int* rows, const int* cols, const int* energies, int numDigits, int* flatWeights) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     // Ensure we do not exceed the number of Digits
@@ -21,15 +20,15 @@ __global__ void addNodeToGraphCUDA(int* adjList, int* adjListSizes, int* Nodes, 
                 return;
             }
 
-            // Assign the new node in the list of Nodes
-            Nodes[NodeIncr * 3] = rows[idx];       
+            // Assign the new node in the list of Nodes. TODO: coalesce memory access everywhere
+            Nodes[NodeIncr * 3] = rows[idx];
             Nodes[NodeIncr * 3 + 1] = cols[idx];   
-            Nodes[NodeIncr * 3 + 2] = energies[idx];  
+            Nodes[NodeIncr * 3 + 2] = energies[idx];
 
             // Initialize the adjacency list for this node (no neighbors yet)
             adjListSizes[NodeIncr] = 0;
 
-            // Add valid neighbors (up to 8 possible) based on row, col offsets
+            // Add valid neighbors (up to 8 possible) based on row, col offsets. TODO: move this to constant memory
             int neighbors[8][2] = {
                 {0, -1},  // Left (same row, col - 1)
                 {0, 1},   // Right (same row, col + 1)
@@ -41,10 +40,16 @@ __global__ void addNodeToGraphCUDA(int* adjList, int* adjListSizes, int* Nodes, 
                 {1, 1}    // Lower right diagonal (row + 1, col + 1)
             };
 
+            int numNeighbors = 0;
+            int offset = NodeIncr * 8 * 3;  // Adjusted index for neighbors
+            
             // Iterate over the potential neighbors
             for (int neighborIdx = 0; neighborIdx < 8; ++neighborIdx) {
                 int neighborRow = rows[idx] + neighbors[neighborIdx][0];  // Calculate neighbor row
                 int neighborCol = cols[idx] + neighbors[neighborIdx][1];  // Calculate neighbor col
+                if (neighborRow < 0 || neighborCol < 0 ) { // TODO: which is the upper bound?
+                    continue;  // Skip invalid neighbors that would be out of bounds
+                }
 
                 // Find the neighbor in the input arrays (assuming sorted or accessible by index)
                 for (int j = 0; j < numDigits; ++j) {
@@ -52,21 +57,31 @@ __global__ void addNodeToGraphCUDA(int* adjList, int* adjListSizes, int* Nodes, 
                         
                         if (energies[j] > 0) {
 
-                            int adjIndex = atomicAdd(&adjListSizes[NodeIncr], 1);  // Increment adjacency list size
-                        // Store the neighbor in the adjacency list
-                            int offset = NodeIncr * 8 * 4 + adjIndex * 4;  // Adjusted index for neighbors
+                            // Store the neighbor in the adjacency list
                             adjList[offset] = neighborRow;
                             adjList[offset + 1] = neighborCol;
                             adjList[offset + 2] = energies[j];  // Store neighbor energy
+                            
+                            flatWeights[NodeIncr * 8 + numNeighbors] = 1; // Assign weight of 1 for now
 
                             // Assign weight based on distance (for example)
                             // flatWeights[offset / 4] = abs(rows[idx] - neighborRow) + abs(cols[idx] - neighborCol);  // Calculate weight based on Manhattan distance
-                            flatWeights[offset] = 1;
+
+                            // Increment the offset for the next neighbor
+                            offset += 3;
+
+                            // Increment the number of neighbors for this node
+                            numNeighbors++;
+
                         }
+                        // Break out of the inner loop once the neighbor is found. Doesnt matter if it was added or not
+                        break;
                     }
                 }
             }
 
+            // Update the number of neighbors for this node
+            adjListSizes[NodeIncr] = numNeighbors;
         }
     }
 }

@@ -59,7 +59,7 @@ void Graph::printGraph() const {
 
         // Print the current node
         std::cout << "Node " << node.getID() << " (Row: " << node.getRow() 
-                  << ", Col: " << node.getCol() << ", Energy: " << node.getEnergy() << ") -> ";
+                  << ", Col: " << node.getCol() << ", Energy: " << node.getEnergy() << ", Nº neighbors: " << nodeList.size() - 1 << "): ";
 
         // Print all its neighbors
         for (size_t i = 1; i < nodeList.size(); ++i) {
@@ -67,7 +67,7 @@ void Graph::printGraph() const {
             int weight = nodeList[i].second;  // Retrieve the weight for this neighbor
 
             // Print the neighbor and the edge weight
-            std::cout << "Neighbor (" << neighbor.getRow() << ","<< neighbor.getCol() << ") (Weight: " << weight << "), ";
+            std::cout << "Neighbor (" << neighbor.getRow() << ","<< neighbor.getCol() << "," << neighbor.getEnergy() << ") (Weight: " << weight << "), ";
         }
 
         std::cout << std::endl;  // End of this node's adjacency list
@@ -103,11 +103,9 @@ void Graph::flattenGraph(std::vector<int>& flatAdjList, std::vector<int>& adjLis
     }
 }
 
-void Graph::rebuildGraph(const std::vector<int>& flatAdjList, const std::vector<int>& adjListSizes, const std::vector<int>& Nodes, int numNodes) {
+void Graph::rebuildGraph(const std::vector<int>& flatAdjList, const std::vector<int>& adjListSizes, const std::vector<int>& weights, const std::vector<int>& Nodes, int numNodes) {
     
     adjList.clear();  // clean the graph
-
-    int adjIndex = 0;  // Index for flatAdjList
 
     // Rebuild the graph
     for (int i = 0; i < numNodes; ++i) {
@@ -124,24 +122,23 @@ void Graph::rebuildGraph(const std::vector<int>& flatAdjList, const std::vector<
         // adjList.push_back({{node, 0}});  // The first entry in the list, weight is 0 for the node itself
         addNode(node);
 
-        // Get the neighbor of node
-        int startIdx = adjListSizes[i];  // Begining index of flatAdjList
-        int endIdx = (i + 1 < adjListSizes.size()) ? adjListSizes[i + 1] : flatAdjList.size() / 4;  // Adjust for 4 entries per neighbor
+        int numNeighbors = adjListSizes[i];
+
+        int offset = i * 8 * 3;  // Adjusted index for neighbors (8 neighbors, 3 values each)
 
         // add the neighbors
-        if (startIdx < endIdx) {
-            for (int j = startIdx; j < endIdx; ++j) {
+        for (int j = 0; j < numNeighbors; ++j) {
+            int neighborRow = flatAdjList[offset];
+            int neighborCol = flatAdjList[offset + 1];
+            int neighborEnergy = flatAdjList[offset + 2];
 
-                int neighborRow = flatAdjList[adjIndex++];
-                int neighborCol = flatAdjList[adjIndex++];
-                int neighborEnergy = flatAdjList[adjIndex++];
-                int weight = flatAdjList[adjIndex++];  // Retrieve the weight
-                
-                Digit neighbor(neighborRow, neighborCol, neighborEnergy);
-                // adjList.back().push_back({neighbor, weight});  // Add neighbor and weight
-                addEdge(node, neighbor, weight);
+            int weight = weights[i * 8 + j];  // Retrieve the weight
 
-            }
+            Digit neighbor(neighborRow, neighborCol, neighborEnergy);
+            // adjList.back().push_back({neighbor, weight});  // Add neighbor and weight
+            addEdge(node, neighbor, weight);
+
+            offset += 3;  // Adjust the offset for the next neighbor
         }
     }
 }
