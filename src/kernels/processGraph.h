@@ -29,5 +29,8 @@
 __global__ void addNodeToGraphCUDA(int* adjList, int* adjListSizes, int* nodeIDs, int* numNodes, int maxNodes,
                                    const int* rows, const int* cols, const int* energies, int numDigits, int* flatWeights);
 
+__global__ void addNodeToGraphCUDAv2(int* adjList, int* adjListSizes, int* nodeIDs, int* numNodes, int maxNodes,
+                                   const int* rows, const int* cols, const int* energies, int numDigits, int* flatWeights);
+
 
 #endif // PROCESS_GRAPH_H

@@ -22,7 +22,9 @@ int main() {
     DigitEnergySummary(digits);
  
     // Do the graph nodes insertion
-    GraphInsertion(graph, 6016, digits);
+    // GraphInsertion(graph, 6016, digits);
+    
+    GraphInsertionV2(graph, 6016, digits);
 
     // Print Graph Nodes summary
     graph.GraphSummary();
