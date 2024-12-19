@@ -1,6 +1,8 @@
 # Compiler and flags
 NVCC = nvcc
 CFLAGS = -Iinclude -arch=sm_60
+CXX = g++
+CXXFLAGS = -Iinclude
 
 # Project directories
 SRCDIR = src
@@ -13,22 +15,27 @@ EXECUTABLE = parallel_graph_clustering
 TARGET = $(BINDIR)/$(EXECUTABLE)
 
 # Source files
-SRC_FILES = $(SRCDIR)/graph.cu $(SRCDIR)/main.cu $(SRCDIR)/utils.cu $(KERNELDIR)/insertNodesAndEdges.cu
+CUDA_SRC_FILES = $(SRCDIR)/graph.cu $(SRCDIR)/main.cu $(SRCDIR)/utils.cu $(KERNELDIR)/insertNodesAndEdges.cu
+CPP_SRC_FILES = $(SRCDIR)/GraphClusteringCPU.cpp
 
 # Object files
-OBJ_FILES = $(patsubst $(KERNELDIR)/%.cu, $(BUILDDIR)/kernels/%.o, $(wildcard $(KERNELDIR)/*.cu)) \
-			$(patsubst $(SRCDIR)/%.cu, $(BUILDDIR)/%.o, $(wildcard $(SRCDIR)/*.cu))
+CUDA_OBJ_FILES = $(patsubst $(KERNELDIR)/%.cu, $(BUILDDIR)/kernels/%.o, $(wildcard $(KERNELDIR)/*.cu)) \
+                 $(patsubst $(SRCDIR)/%.cu, $(BUILDDIR)/%.o, $(wildcard $(SRCDIR)/*.cu))
+CPP_OBJ_FILES = $(patsubst $(SRCDIR)/%.cpp, $(BUILDDIR)/%.o, $(wildcard $(SRCDIR)/*.cpp))
+
 
 # Print variables for debugging
-$(info SRC_FILES = $(SRC_FILES))
-$(info OBJ_FILES = $(OBJ_FILES))
+$(info CUDA_SRC_FILES = $(CUDA_SRC_FILES))
+$(info CPP_SRC_FILES = $(CPP_SRC_FILES))
+$(info CUDA_OBJ_FILES = $(CUDA_OBJ_FILES))
+$(info CPP_OBJ_FILES = $(CPP_OBJ_FILES))
 
 # Build rules
 all: $(TARGET)
 
-$(TARGET): $(OBJ_FILES)
+$(TARGET): $(CUDA_OBJ_FILES) $(CPP_OBJ_FILES)
 	@mkdir -p $(BINDIR)
-	$(NVCC) $(CFLAGS) $(OBJ_FILES) -o $(TARGET)
+	$(NVCC) $(CFLAGS) $(CUDA_OBJ_FILES) $(CPP_OBJ_FILES) -o $(TARGET)
 	@echo "Build complete: $(TARGET)"
 
 $(BUILDDIR)/%.o: $(SRCDIR)/%.cu
@@ -39,6 +46,11 @@ $(BUILDDIR)/%.o: $(SRCDIR)/%.cu
 $(BUILDDIR)/kernels/%.o: $(KERNELDIR)/%.cu
 	@mkdir -p $(BUILDDIR)/kernels
 	$(NVCC) $(CFLAGS) -c $< -o $@
+	@echo "Compiled: $< -> $@"
+
+$(BUILDDIR)/%.o: $(SRCDIR)/%.cpp
+	@mkdir -p $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 	@echo "Compiled: $< -> $@"
 
 clean:

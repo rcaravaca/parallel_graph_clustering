@@ -32,4 +32,25 @@ void GraphInsertion(Graph& graph, int maxNodes, const std::vector<Digit>& digits
  */
 void GraphInsertionV2(Graph& graph, int maxNodes, const std::vector<Digit>& digits);
 
+void GraphInsertionNEventsV1(
+    std::vector<Graph>& graphs,
+    const int maxSeeds,
+    const std::vector<Digit>& digits,
+    const std::vector<int>& digitsOffsets,
+    const std::vector<int>& numDigits);
+
+void GraphInsertionNEventsBase(
+    std::vector<Graph>& graphs,
+    const int maxSeeds,
+    const std::vector<Digit>& digits,
+    const std::vector<int>& digitsOffsets,
+    const std::vector<int>& numDigits);
+
+void GraphInsertionNEventsWithPi0V1(
+    std::vector<Graph>& graphs,
+    const int maxSeeds,
+    const std::vector<Digit>& digits,
+    const std::vector<int>& digitsOffsets,
+    const std::vector<int>& numDigits);
+
 #endif // ADD_NODE_WITH_CUDA_H

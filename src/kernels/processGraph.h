@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <iostream>
+#include <stdint.h>
 
 #include <cuda_runtime.h>
 
@@ -32,5 +33,47 @@ __global__ void addNodeToGraphCUDA(int* adjList, int* adjListSizes, int* nodeIDs
 __global__ void addNodeToGraphCUDAv2(int* adjList, int* adjListSizes, int* nodeIDs, int* numNodes, int maxNodes,
                                    const int* rows, const int* cols, const int* energies, int numDigits, int* flatWeights);
 
+__global__ void addNodeToGraphCUDANEventsV1(int* numDigits, int* digitsOffsets, int* adjList, int* adjListSizes, int* Seeds, int* numSeeds, int maxSeeds, const int* rows, const int* cols, const int* energies, int* flatWeights);
+
+__global__ void addNodeToGraphCUDANEventsBase(int* numDigits, int* digitsOffsets, int* adjList, int* adjListSizes, int* Seeds, int* numSeeds, int maxSeeds, const int* rows, const int* cols, const int* energies, int* flatWeights);
+
+__global__ void addNodeToGraphCUDANEventsWithMergedPi0V1(
+    int* numDigits,
+    int* digitsOffsets,
+    int* adjList,
+    int* adjListSizes,
+    int* Seeds,
+    int* numSeeds,
+    int maxSeeds,
+    const int* rows,
+    const int* cols,
+    const int* energies,
+    int* flatWeights,
+    int8_t* isMergedPi0,
+    int* numMergedPi0s);
+
+// constanst used to identify the position of merged pi0s
+enum MergedPi0Positions : int8_t {
+    TOP_LEFT = 0,
+    TOP,
+    TOP_RIGHT,
+    LEFT,
+    RIGHT,
+    BOTTOM_LEFT,
+    BOTTOM,
+    BOTTOM_RIGHT
+};
+
+__global__ void expandPi0sNeighborsV1(
+    int* numDigits,
+    int* digitsOffsets,
+    const int* rows,
+    const int* cols,
+    const int* energies,
+    int* Seeds,
+    int maxSeeds,
+    int* numMergedPi0s,
+    int* mergedPi0Indexes,
+    int8_t* mergedPi0sDirection);
 
 #endif // PROCESS_GRAPH_H
