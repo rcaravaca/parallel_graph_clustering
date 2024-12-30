@@ -108,7 +108,7 @@ void n_events_gpu_with_pi0s() {
 
     // check running time
     auto startcpu = std::chrono::high_resolution_clock::now();
-    GraphInsertionNEventsWithPi0V1(graphs, 6016, digits1000Events, digitsOffsets, numDigits);
+    GraphInsertionNEventsWithPi0V2(graphs, 6016, digits1000Events, digitsOffsets, numDigits);
     auto endcpu = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = endcpu - startcpu;
     std::cout << "Elapsed time GPU: " << elapsed.count() << " seconds" << std::endl;

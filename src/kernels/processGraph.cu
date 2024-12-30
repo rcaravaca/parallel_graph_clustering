@@ -591,8 +591,10 @@ __global__ void addNodeToGraphCUDANEventsWithMergedPi0V1(int* numDigits, int* di
     }
 }
 
-__global__ void expandPi0sNeighborsV1(int* numDigits, int* digitsOffsets, const int* rows, const int* cols, const int* energies, int* Seeds, int maxSeeds, int* numMergedPi0s, int* mergedPi0Indexes, int8_t* mergedPi0sDirection) {
-    
+// 8x32 threads per block
+// process 32 digits at a time, using 8 threads per digit
+__global__ void addNodeToGraphCUDANEventsWithMergedPi0V2(int* numDigits, int* digitsOffsets, int* adjList, int* adjListSizes, int* Seeds, int* numSeeds, int maxSeeds, const int* rows, const int* cols, const int* energies, float* flatWeights, int* neighborsTotClE, int8_t* isMergedPi0, int* numMergedPi0s) {
+
     int eventIdx = blockIdx.x;
 
     __shared__ int caloValues[58][64];
@@ -619,8 +621,185 @@ __global__ void expandPi0sNeighborsV1(int* numDigits, int* digitsOffsets, const 
 
     __syncthreads();
 
+    adjList = adjList + eventIdx * maxSeeds * 8 * 3;
+    adjListSizes = adjListSizes + eventIdx * maxSeeds;
+    Seeds = Seeds + eventIdx * maxSeeds * 3;
+    flatWeights = flatWeights + eventIdx * maxSeeds * 8;
+    neighborsTotClE = neighborsTotClE + eventIdx * 58 * 64; // should this be 58 * 64? I guess but eventually this will be bigger to reach 6016
+
+    isMergedPi0 = isMergedPi0 + eventIdx * maxSeeds;
+
+    for (int digit = threadIdx.y; digit < digitsInEvent; digit += blockDim.y) {
+
+        int row = rows[digit];
+        int col = cols[digit];
+        int energy = caloValues[row][col];
+
+        // Check if the energy is greater than threshold = 50. Otherwise, it cant be a seed
+        if (!(energy > threshold)) {
+            continue;
+        }
+
+        // Check if it is a local maxima. Otherwise, it cant be a seed
+        int neighborOffsets[8][2] = {
+            {-1, -1}, {-1, 0}, {-1, 1}, // Top-left, Top, Top-right
+            {0, -1},          {0, 1},  // Left,       Right
+            {1, -1}, {1, 0}, {1, 1}    // Bottom-left, Bottom, Bottom-right
+        };
+
+        int neighborRow = row + neighborOffsets[threadIdx.x][0];
+        int neighborCol = col + neighborOffsets[threadIdx.x][1];
+
+        bool neighborIsGreater = false;
+        int neighborEnergy = 0;
+
+        if (neighborRow >= 0 && neighborRow < 58 && neighborCol >= 0 && neighborCol < 64) {
+            neighborEnergy = caloValues[neighborRow][neighborCol];
+            if (neighborEnergy > caloValues[row][col]) {
+                neighborIsGreater = true;
+            }
+        }
+
+        // check if any of the neighbors is greater using warp __any_sync, with threads working in groups of 8
+        // Define masks for 8-thread subgroups within a warp
+        unsigned subgroupMask;
+        
+        if      (threadIdx.y % 4 == 0) subgroupMask = 0x000000FF;
+        else if (threadIdx.y % 4 == 1) subgroupMask = 0x0000FF00;
+        else if (threadIdx.y % 4 == 2) subgroupMask = 0x00FF0000;
+        else                           subgroupMask = 0xFF000000;
+        
+        // Check if any thread in the 8-thread subgroup has predicate == true
+        if (__any_sync(subgroupMask, neighborIsGreater)) {
+            continue; // some neighbor is greater, so this is not a local maxima
+        }
+
+        // clusters with 0 or just 1 neighbor are not interesting
+        if (__popc(__ballot_sync(subgroupMask, neighborEnergy > 0)) <= 1) {
+            continue;
+        }
+
+        int seedNumber = 0;
+
+        if (threadIdx.x == 0) {
+            seedNumber = atomicAdd(&numSeeds[eventIdx], 1); // TODO: this could be done now in shared memory as each event is processed in a single block
+        }
+
+        seedNumber = __shfl_sync(subgroupMask, seedNumber, threadIdx.y % 4 * 8);
+
+        // Ensure the maximum number of nodes is not exceeded. This is not needed.
+        if (seedNumber >= maxSeeds) {
+            printf("Error: The maximum number of nodes was exceeded.\n");
+            return;
+        }
+
+        // get total cluster energy
+        int totalClusterEnergy = neighborEnergy;
+        for (int offset = 4; offset > 0; offset /= 2) {
+            totalClusterEnergy += __shfl_down_sync(subgroupMask, totalClusterEnergy, offset);
+        }
+
+        if (threadIdx.x == 0) {
+            totalClusterEnergy += energy; // add the seed energy
+        }
+
+        totalClusterEnergy = __shfl_sync(subgroupMask, totalClusterEnergy, threadIdx.y % 4 * 8); // Broadcast to all threads
+
+
+        __shared__ int numNeighbors[32];
+        if (threadIdx.x == 0) {
+            numNeighbors[threadIdx.y] = 0;
+            Seeds[seedNumber * 3] = row;
+            Seeds[seedNumber * 3 + 1] = col;
+            Seeds[seedNumber * 3 + 2] = energy;
+        }
+
+        __syncwarp();
+
+        if (neighborRow >= 0 && neighborRow < 58 && neighborCol >= 0 && neighborCol < 64 && 
+            caloValues[neighborRow][neighborCol] > 0) { // neighbor has some energy
+
+            int neighborIdx = atomicAdd(&numNeighbors[threadIdx.y], 1);
+            int offset = seedNumber * 8 * 3 + neighborIdx * 3;
+            adjList[offset] = neighborRow;
+            adjList[offset + 1] = neighborCol;
+            adjList[offset + 2] = caloValues[neighborRow][neighborCol];
+            flatWeights[seedNumber * 8 + neighborIdx] = 1;
+            atomicAdd(&neighborsTotClE[neighborRow * 64 + neighborCol], totalClusterEnergy);
+        }
+
+        __syncwarp();
+
+        if (threadIdx.x == 0) {
+            adjListSizes[seedNumber] = numNeighbors[threadIdx.y];
+            // for later use
+            neighborsTotClE[row * 64 + col] = totalClusterEnergy; // seed position will contain the 3x3 cluster energy
+        }
+
+        __syncwarp();
+
+        int maxNeighborEnergy = neighborEnergy;
+        for (int offset = 4; offset > 0; offset /= 2) { // Reduce within 8 threads
+            int otherVal = __shfl_down_sync(subgroupMask, maxNeighborEnergy, offset);
+            maxNeighborEnergy = fmaxf(maxNeighborEnergy, otherVal);
+        }
+
+        __syncwarp();
+        maxNeighborEnergy = __shfl_sync(subgroupMask, maxNeighborEnergy, threadIdx.y % 4 * 8); // Broadcast to all threads
+
+        //Identify threads with the maximum value
+        unsigned int maxMask = __ballot_sync(subgroupMask, neighborEnergy == maxNeighborEnergy);
+
+        // Get the first thread index within the subgroup
+        int maxThreadInGroup = (__ffs(maxMask & subgroupMask) - 1) % 8; // Local index within warp
+
+        // Check if neighbor could be a merged Pi0. Main seed energy > 1000 and neighbor energy > 25% main seed energy
+        if (threadIdx.x == maxThreadInGroup) {
+            if (caloValues[row][col] > 1000 && caloValues[neighborRow][neighborCol] > 0.25 * caloValues[row][col]) {
+                int mergedPi0Idx = atomicAdd(&numMergedPi0s[eventIdx], 1); // TODO: value not used
+                isMergedPi0[seedNumber] = threadIdx.x; // position will be known with constant values defined in the header
+            }
+        }
+    }
+}
+
+__global__ void expandPi0sNeighborsV1(int* numDigits, int* digitsOffsets, const int* rows, const int* cols, const int* energies, int* Seeds, int maxSeeds, int* neighborsTotClE, int* numMergedPi0s, int* mergedPi0Indexes, int8_t* mergedPi0sDirection, int* expandedMergedPi0Neighbors, int* expandedMergedPi0NeighborsSizes, float* expandedMergedPi0Weights) {
+    
+    int eventIdx = blockIdx.x;
+
+    __shared__ int caloValues[58][64];
+
+    int localThreadId = threadIdx.y * blockDim.x + threadIdx.x;
+
+        // first initialize all values to 0
+    for (int i = localThreadId; i < 58*64; i += blockDim.x * blockDim.y) {
+        caloValues[i / 64][i % 64] = 0;
+    }
+
+    __syncthreads();
+
+    int digitsInEvent = numDigits[eventIdx];
+
+    rows = rows + digitsOffsets[eventIdx];
+    cols = cols + digitsOffsets[eventIdx];
+    energies = energies + digitsOffsets[eventIdx];
+    neighborsTotClE = neighborsTotClE + eventIdx * 58 * 64;
+    Seeds = Seeds + eventIdx * maxSeeds * 3;
+
+    // now fill in the calo values
+    for (int i = localThreadId; i < digitsInEvent; i += blockDim.x * blockDim.y) {
+        caloValues[rows[i]][cols[i]] = energies[i];
+    }
+
+    __syncthreads();
+
     int mergedPi0s = numMergedPi0s[eventIdx];
     mergedPi0Indexes = mergedPi0Indexes + eventIdx * maxSeeds;
+    mergedPi0sDirection = mergedPi0sDirection + eventIdx * maxSeeds;
+    
+    expandedMergedPi0Neighbors = expandedMergedPi0Neighbors + eventIdx * maxSeeds * 5 * 3;
+    expandedMergedPi0NeighborsSizes = expandedMergedPi0NeighborsSizes + eventIdx * maxSeeds;
+    expandedMergedPi0Weights = expandedMergedPi0Weights + eventIdx * maxSeeds * 5;
 
     uint8_t neighborsToAddByDirection[8] = {
         0b00101111, // TOP_LEFT
@@ -639,31 +818,122 @@ __global__ void expandPi0sNeighborsV1(int* numDigits, int* digitsOffsets, const 
         {1, -1},  {1, 0},  {1, 1}    // Bottom-left, Bottom, Bottom-right
     };
 
-    printf("This is thread %d %d in block %d\n", threadIdx.x, threadIdx.y, blockIdx.x);
+    unsigned subgroupMask;
+        
+    if      (threadIdx.y % 4 == 0) subgroupMask = 0x000000FF;
+    else if (threadIdx.y % 4 == 1) subgroupMask = 0x0000FF00;
+    else if (threadIdx.y % 4 == 2) subgroupMask = 0x00FF0000;
+    else                           subgroupMask = 0xFF000000;
 
     for (int pi0 = threadIdx.y; pi0 < mergedPi0s; pi0 += blockDim.y) {
         
         int seedRow = Seeds[mergedPi0Indexes[pi0] * 3];
         int seedCol = Seeds[mergedPi0Indexes[pi0] * 3 + 1];
-        int seedEnergy = Seeds[mergedPi0Indexes[pi0] * 3 + 2];
+        // int seedEnergy = Seeds[mergedPi0Indexes[pi0] * 3 + 2];
+        int originalClusterEnergy = neighborsTotClE[seedRow * 64 + seedCol];
         int8_t direction = mergedPi0sDirection[mergedPi0Indexes[pi0]];
 
         int pi0Row = seedRow + neighborOffsets[direction][0];
         int pi0Col = seedCol + neighborOffsets[direction][1];
         int pi0Energy = caloValues[pi0Row][pi0Col];
-        if (threadIdx.x == 0) {
-            printf("Expanding merged Pi0 at (%d, %d - Seed %d) with energy %d in direction %d which has energy %d\n", seedRow, seedCol, mergedPi0Indexes[pi0], seedEnergy, direction, pi0Energy);
-        }
+        
+        int neighborEnergy = 0;
+        bool addedAsPi0Neighbor = false;
+        int neighborRow, neighborCol;
 
-        for (int i = threadIdx.x; i < 8; i += blockDim.x) {
-            if (neighborsToAddByDirection[direction] & (1 << i)) {
-                int neighborRow = pi0Row + neighborOffsets[i][0];
-                int neighborCol = pi0Col + neighborOffsets[i][1];
-                if (neighborRow >= 0 && neighborRow < 58 && neighborCol >= 0 && neighborCol < 64) {
-                    printf("Adding Neighbor at (%d, %d) with energy %d\n", neighborRow, neighborCol, caloValues[neighborRow][neighborCol]);
+        if (neighborsToAddByDirection[direction] & (1 << threadIdx.x)) {
+            neighborRow = pi0Row + neighborOffsets[threadIdx.x][0];
+            neighborCol = pi0Col + neighborOffsets[threadIdx.x][1];
+            if (neighborRow >= 0 && neighborRow < 58 && neighborCol >= 0 && neighborCol < 64) {
+                neighborEnergy = caloValues[neighborRow][neighborCol];
+                if (neighborEnergy > 0 && neighborEnergy < pi0Energy) {
+                    addedAsPi0Neighbor = true;
+                    
+                    int neighborIdx = atomicAdd(&expandedMergedPi0NeighborsSizes[mergedPi0Indexes[pi0]], 1);
+                    int offset = mergedPi0Indexes[pi0] * 5 * 3 + neighborIdx * 3;
+                    expandedMergedPi0Neighbors[offset] = neighborRow;
+                    expandedMergedPi0Neighbors[offset + 1] = neighborCol;
+                    expandedMergedPi0Neighbors[offset + 2] = neighborEnergy;
+                    expandedMergedPi0Weights[mergedPi0Indexes[pi0] * 5 + neighborIdx] = 1;
                 }
             }
         }
-        __syncthreads();
+
+        if (!__any_sync(subgroupMask, neighborEnergy > 0)) {
+            if (threadIdx.x == 0) {
+                // printf("Expanding merged Pi0 at (%d, %d - Seed %d) with energy %d in direction %d which has energy %d has no neighbor to add\n", seedRow, seedCol, mergedPi0Indexes[pi0], seedEnergy, direction, pi0Energy);
+            }
+            continue;
+        }
+
+        // printf("Expanding merged Pi0 at (%d, %d - Seed %d) with energy %d in direction %d which has energy %d\n", seedRow, seedCol, mergedPi0Indexes[pi0], seedEnergy, direction, pi0Energy);
+
+        // add recently added cluster energy to original 3x3 neighbors, and add original cluster energy to recently added neighbors
+
+        int expandedNeighborsEnergy = neighborEnergy;
+        for (int offset = 4; offset > 0; offset /= 2) {
+            expandedNeighborsEnergy += __shfl_down_sync(subgroupMask, expandedNeighborsEnergy, offset);
+        }
+
+        expandedNeighborsEnergy = __shfl_sync(subgroupMask, expandedNeighborsEnergy, threadIdx.y % 4 * 8); // Broadcast to all threads
+
+        // add original cluster energy + expanded neighbors energy to the neighborsTotClE array of the pi0 neighbors
+        if (addedAsPi0Neighbor) {
+            // printf("Digit at (%d, %d) added as neighbor to merged Pi0 at (%d, %d). Adding %d to %d\n", neighborRow, neighborCol, seedRow, seedCol, originalClusterEnergy + expandedNeighborsEnergy, neighborsTotClE[neighborRow * 64 + neighborCol]);
+            atomicAdd(&neighborsTotClE[neighborRow * 64 + neighborCol], originalClusterEnergy + expandedNeighborsEnergy);
+        }
+
+        // add original neighbors and seed the energy of expanded neighbors
+        neighborRow = seedRow + neighborOffsets[threadIdx.x][0];
+        neighborCol = seedCol + neighborOffsets[threadIdx.x][1];
+
+        if (neighborRow >= 0 && neighborRow < 58 && neighborCol >= 0 && neighborCol < 64) {
+            if (caloValues[neighborRow][neighborCol] > 0) { // only if already has some energy, otherwise it was not used
+                // printf("Adding expanded energy to neighbor at (%d, %d) from seed at (%d, %d). Adding %d to %d\n", neighborRow, neighborCol, seedRow, seedCol, expandedNeighborsEnergy, neighborsTotClE[neighborRow * 64 + neighborCol]);
+                atomicAdd(&neighborsTotClE[neighborRow * 64 + neighborCol], expandedNeighborsEnergy);
+            }
+        }
+
+        if (threadIdx.x == 0) {
+            // printf("Adding expanded energy to seed at (%d, %d). Adding %d to %d\n", seedRow, seedCol, expandedNeighborsEnergy, neighborsTotClE[seedRow * 64 + seedCol]);
+            neighborsTotClE[seedRow * 64 + seedCol] = originalClusterEnergy + expandedNeighborsEnergy;
+        }
+    }
+}
+
+__global__ void calculateWeightsV1(int* numSeeds, int* Seeds, int maxSeeds, int* adjList, int* adjListSizes, float* flatWeights, int8_t* isMergedPi0, int* expandedMergedPi0Neighbors, int* expandedMergedPi0NumNeighbors, float* expandedMergedPi0Weights, int* neighborsTotClE) {
+
+    int eventIdx = blockIdx.x;
+
+    int nSeeds = numSeeds[eventIdx];
+
+    Seeds = Seeds + eventIdx * maxSeeds * 3;
+
+    adjList = adjList + eventIdx * maxSeeds * 8 * 3;
+    adjListSizes = adjListSizes + eventIdx * maxSeeds;
+    flatWeights = flatWeights + eventIdx * maxSeeds * 8;
+
+    isMergedPi0 = isMergedPi0 + eventIdx * maxSeeds;
+    expandedMergedPi0Neighbors = expandedMergedPi0Neighbors + eventIdx * maxSeeds * 5 * 3;
+    expandedMergedPi0NumNeighbors = expandedMergedPi0NumNeighbors + eventIdx * maxSeeds;
+    expandedMergedPi0Weights = expandedMergedPi0Weights + eventIdx * maxSeeds * 5;
+
+    neighborsTotClE = neighborsTotClE + eventIdx * 58 * 64;
+
+    for (int seed = threadIdx.y; seed < nSeeds; seed += blockDim.y) {
+        int clusterEnergy = neighborsTotClE[Seeds[seed * 3] * 64 + Seeds[seed * 3 + 1]];
+        int neighborTotClEnergy;
+
+        // weights of 3x3 window neighbors
+        if (threadIdx.x < adjListSizes[seed]) {
+            neighborTotClEnergy = neighborsTotClE[adjList[seed * 8 * 3 + threadIdx.x * 3] * 64 + adjList[seed * 8 * 3 + threadIdx.x * 3 + 1]];
+            flatWeights[seed * 8 + threadIdx.x] = static_cast<float>(clusterEnergy) / neighborTotClEnergy;
+        }
+
+        // weights of merged Pi0 neighbors
+        if (threadIdx.x < expandedMergedPi0NumNeighbors[seed]) {
+            neighborTotClEnergy = neighborsTotClE[expandedMergedPi0Neighbors[seed * 5 * 3 + threadIdx.x * 3] * 64 + expandedMergedPi0Neighbors[seed * 5 * 3 + threadIdx.x * 3 + 1]];
+            expandedMergedPi0Weights[seed * 5 + threadIdx.x] = static_cast<float>(clusterEnergy) / neighborTotClEnergy;
+        }
     }
 }
