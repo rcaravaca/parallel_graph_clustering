@@ -593,7 +593,7 @@ __global__ void addNodeToGraphCUDANEventsWithMergedPi0V1(int* numDigits, int* di
 
 // 8x32 threads per block
 // process 32 digits at a time, using 8 threads per digit
-__global__ void addNodeToGraphCUDANEventsWithMergedPi0V2(int* numDigits, int* digitsOffsets, int* adjList, int* adjListSizes, int* Seeds, int* numSeeds, int maxSeeds, const int* rows, const int* cols, const int* energies, float* flatWeights, int* neighborsTotClE, int8_t* isMergedPi0, int* numMergedPi0s) {
+__global__ void addNodeToGraphCUDANEventsWithMergedPi0V2(int* numDigits, int* digitsOffsets, int* adjList, int* adjListSizes, int* Seeds, int* numSeeds, int maxSeeds, const int* rows, const int* cols, const int* energies, int* neighborsTotClE, int8_t* isMergedPi0, int* numMergedPi0s) {
 
     int eventIdx = blockIdx.x;
 
@@ -624,7 +624,6 @@ __global__ void addNodeToGraphCUDANEventsWithMergedPi0V2(int* numDigits, int* di
     adjList = adjList + eventIdx * maxSeeds * 8 * 3;
     adjListSizes = adjListSizes + eventIdx * maxSeeds;
     Seeds = Seeds + eventIdx * maxSeeds * 3;
-    flatWeights = flatWeights + eventIdx * maxSeeds * 8;
     neighborsTotClE = neighborsTotClE + eventIdx * 58 * 64; // should this be 58 * 64? I guess but eventually this will be bigger to reach 6016
 
     isMergedPi0 = isMergedPi0 + eventIdx * maxSeeds;
@@ -724,7 +723,6 @@ __global__ void addNodeToGraphCUDANEventsWithMergedPi0V2(int* numDigits, int* di
             adjList[offset] = neighborRow;
             adjList[offset + 1] = neighborCol;
             adjList[offset + 2] = caloValues[neighborRow][neighborCol];
-            flatWeights[seedNumber * 8 + neighborIdx] = 1;
             atomicAdd(&neighborsTotClE[neighborRow * 64 + neighborCol], totalClusterEnergy);
         }
 
@@ -763,7 +761,7 @@ __global__ void addNodeToGraphCUDANEventsWithMergedPi0V2(int* numDigits, int* di
     }
 }
 
-__global__ void expandPi0sNeighborsV1(int* numDigits, int* digitsOffsets, const int* rows, const int* cols, const int* energies, int* Seeds, int maxSeeds, int* neighborsTotClE, int* numMergedPi0s, int* mergedPi0Indexes, int8_t* mergedPi0sDirection, int* expandedMergedPi0Neighbors, int* expandedMergedPi0NeighborsSizes, float* expandedMergedPi0Weights) {
+__global__ void expandPi0sNeighborsV1(int* numDigits, int* digitsOffsets, const int* rows, const int* cols, const int* energies, int* Seeds, int maxSeeds, int* neighborsTotClE, int* numMergedPi0s, int* mergedPi0Indexes, int8_t* mergedPi0sDirection, int* expandedMergedPi0Neighbors, int* expandedMergedPi0NeighborsSizes) {
     
     int eventIdx = blockIdx.x;
 
@@ -799,7 +797,6 @@ __global__ void expandPi0sNeighborsV1(int* numDigits, int* digitsOffsets, const 
     
     expandedMergedPi0Neighbors = expandedMergedPi0Neighbors + eventIdx * maxSeeds * 5 * 3;
     expandedMergedPi0NeighborsSizes = expandedMergedPi0NeighborsSizes + eventIdx * maxSeeds;
-    expandedMergedPi0Weights = expandedMergedPi0Weights + eventIdx * maxSeeds * 5;
 
     uint8_t neighborsToAddByDirection[8] = {
         0b00101111, // TOP_LEFT
@@ -854,7 +851,6 @@ __global__ void expandPi0sNeighborsV1(int* numDigits, int* digitsOffsets, const 
                     expandedMergedPi0Neighbors[offset] = neighborRow;
                     expandedMergedPi0Neighbors[offset + 1] = neighborCol;
                     expandedMergedPi0Neighbors[offset + 2] = neighborEnergy;
-                    expandedMergedPi0Weights[mergedPi0Indexes[pi0] * 5 + neighborIdx] = 1;
                 }
             }
         }

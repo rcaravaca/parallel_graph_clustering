@@ -63,7 +63,6 @@ __global__ void addNodeToGraphCUDANEventsWithMergedPi0V2(
     const int* rows,
     const int* cols,
     const int* energies,
-    float* flatWeights,
     int* neighborsTotClE,
     int8_t* isMergedPi0,
     int* numMergedPi0s);
@@ -93,8 +92,7 @@ __global__ void expandPi0sNeighborsV1(
     int* mergedPi0Indexes,
     int8_t* mergedPi0sDirection,
     int* expandedMergedPi0Neighbors,
-    int* expandedMergedPi0NeighborsSizes,
-    float* expandedMergedPi0Weights);
+    int* expandedMergedPi0NeighborsSizes);
 
 __global__ void calculateWeightsV1(
     int* d_numSeeds, 

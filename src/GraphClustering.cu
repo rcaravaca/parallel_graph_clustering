@@ -15,6 +15,18 @@ void prefixSumPi0sIndexes(int numEvents, int maxSeeds, std::vector<int8_t>& isMe
     }
 }
 
+void prefixSumPi0sIndexesPinned(int numEvents, int maxSeeds, int8_t* isMergedPi0, int* Pi0Indexes) {
+    for (int event = 0; event < numEvents; ++event) {
+        int counter = 0;
+        for (int seed = 0; seed < maxSeeds; ++seed) {
+            if (isMergedPi0[event * maxSeeds + seed] > -1) {
+                Pi0Indexes[event * maxSeeds + counter] = seed;
+                counter++;
+            }
+        }
+    }
+}
+
 void GraphInsertion(Graph& graph, int maxNodes, const std::vector<Digit>& digits) {
 
     std::cout << "GraphInsertion: Starting the Graph Nodes Insertion..." << std::endl;
@@ -687,28 +699,16 @@ void GraphInsertionNEventsWithPi0V2(
     }
 
     int numEvents = graphs.size();
-
-    // info from all graphs in the same vectors
-    std::vector<int> flatAdjList;
-    std::vector<int> adjListSizes;
-    std::vector<int> Seeds;
-    std::vector<float> flatWeights;
-    std::vector<int> neighborsTotClE;
-    
-    std::vector<int> numSeeds; // Number of seeds in each graph
-
-    std::vector<int8_t> isMergedPi0; // will contain 0 if not, and a constant indicating the direction of the merge if it is
-    std::vector<int> mergedPi0AdjListSizes;
-    std::vector<int> expandedMergedPi0Neighbors;
-    std::vector<int> expandedMergedPi0NumNeighbors;
-    std::vector<float> expandedMergedPi0Weights;
-
-    std::vector<int> numMergedPi0; // Number of merged pi0s in each graph
     
     int totalNumberOfDigits = digits.size();
-    std::vector<int> rows(totalNumberOfDigits);
-    std::vector<int> cols(totalNumberOfDigits);
-    std::vector<int> energies(totalNumberOfDigits);
+
+    int *rows;
+    int *cols;
+    int *energies;
+
+    cudaMallocHost((void**)&rows, totalNumberOfDigits * sizeof(int));
+    cudaMallocHost((void**)&cols, totalNumberOfDigits * sizeof(int));
+    cudaMallocHost((void**)&energies, totalNumberOfDigits * sizeof(int));
 
     for (int i = 0; i < totalNumberOfDigits; ++i) {
         rows[i] = digits[i].getRow();
@@ -722,22 +722,45 @@ void GraphInsertionNEventsWithPi0V2(
     int adjListSize = numEvents * maxSeeds * 8 * 3; // Up to 8 neighbors per node, each with 3 integers (row, col, energy)
     int weightSize = numEvents * maxSeeds * 8; // Up to 8 neighbors per node, each with 1 value (weight of the edge)
 
-    Seeds.resize(SeedSize);
-    adjListSizes.resize(numEvents * maxSeeds);
-    flatAdjList.resize(adjListSize);
-    flatWeights.resize(weightSize);
-    neighborsTotClE.resize(numEvents * 64 * 58);
-    numSeeds.resize(numEvents);
+    int *Seeds;
+    cudaMallocHost((void**)&Seeds, SeedSize * sizeof(int));
+
+    int *adjListSizes;
+    cudaMallocHost((void**)&adjListSizes, numEvents * maxSeeds * sizeof(int));
+
+    int *flatAdjList;
+    cudaMallocHost((void**)&flatAdjList, adjListSize * sizeof(int));
+
+    int *neighborsTotClE;
+    cudaMallocHost((void**)&neighborsTotClE, numEvents * 64 * 58 * sizeof(int));
+        
+    float *flatWeights;
+    cudaMallocHost((void**)&flatWeights, weightSize * sizeof(float));
+
+    int* numSeeds;
+    cudaMallocHost((void**)&numSeeds, numEvents * sizeof(int));
 
     int expandedMergedPi0AdjListSize = numEvents * maxSeeds * 5 * 3; // Up to 5 additional neighbors per merged pi0 (diagonal cases), 
                                                                      // each with 3 integers (row, col, energy)
-    int expandedMergedPi0WeightsSize = numEvents * maxSeeds * 5; 
-    isMergedPi0.resize(numEvents * maxSeeds, -1);
-    mergedPi0AdjListSizes.resize(numEvents * maxSeeds);
-    expandedMergedPi0Neighbors.resize(expandedMergedPi0AdjListSize);
-    expandedMergedPi0NumNeighbors.resize(numEvents * maxSeeds);
-    expandedMergedPi0Weights.resize(expandedMergedPi0WeightsSize);
-    numMergedPi0.resize(numEvents);
+    int expandedMergedPi0WeightsSize = numEvents * maxSeeds * 5;
+
+    int8_t *isMergedPi0;
+    cudaMallocHost((void**)&isMergedPi0, numEvents * maxSeeds * sizeof(int8_t));
+
+    int *mergedPi0AdjListSizes;
+    cudaMallocHost((void**)&mergedPi0AdjListSizes, numEvents * maxSeeds * sizeof(int));
+
+    int *expandedMergedPi0Neighbors;
+    cudaMallocHost((void**)&expandedMergedPi0Neighbors, expandedMergedPi0AdjListSize * sizeof(int));
+    
+    int *expandedMergedPi0NumNeighbors;
+    cudaMallocHost((void**)&expandedMergedPi0NumNeighbors, numEvents * maxSeeds * sizeof(int));
+    
+    float *expandedMergedPi0Weights;
+    cudaMallocHost((void**)&expandedMergedPi0Weights, expandedMergedPi0WeightsSize * sizeof(float));
+    
+    int *numMergedPi0;
+    cudaMallocHost((void**)&numMergedPi0, numEvents * sizeof(int));
 
     // Allocate memory on the device
     int *d_numDigits, *d_digitsOffsets, *d_adjList, *d_adjListSizes, *d_Seeds, *d_numSeeds, *d_rows, *d_cols, *d_energies,
@@ -750,9 +773,9 @@ void GraphInsertionNEventsWithPi0V2(
     cudaMalloc(&d_adjListSizes, numEvents * maxSeeds * sizeof(int));
     cudaMalloc(&d_Seeds, SeedSize * sizeof(int));
     cudaMalloc(&d_numSeeds, numEvents * sizeof(int));
-    cudaMalloc(&d_rows, rows.size() * sizeof(int));
-    cudaMalloc(&d_cols, cols.size() * sizeof(int));
-    cudaMalloc(&d_energies, energies.size() * sizeof(int));
+    cudaMalloc(&d_rows, totalNumberOfDigits * sizeof(int));
+    cudaMalloc(&d_cols, totalNumberOfDigits * sizeof(int));
+    cudaMalloc(&d_energies, totalNumberOfDigits * sizeof(int));
     cudaMalloc(&d_flatWeights, weightSize * sizeof(float));
     cudaMalloc(&d_neighborsTotClE, numEvents * 64 * 58 * sizeof(int));
     cudaMalloc(&d_isMergedPi0, numEvents * maxSeeds * sizeof(int8_t));
@@ -768,31 +791,33 @@ void GraphInsertionNEventsWithPi0V2(
 
     cudaMemcpy(d_numDigits, numDigits.data(), numEvents * sizeof(int), cudaMemcpyHostToDevice); // TODO: this could be created in a coalesced way, although its just a value per block
     cudaMemcpy(d_digitsOffsets, digitsOffsets.data(), numEvents * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_adjList, flatAdjList.data(), adjListSize * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_adjListSizes, adjListSizes.data(), numEvents * maxSeeds * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_Seeds, Seeds.data(), SeedSize * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_numSeeds, numSeeds.data(), numEvents * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_rows, rows.data(), rows.size() * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_cols, cols.data(), cols.size() * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_energies, energies.data(), energies.size() * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_flatWeights, flatWeights.data(), weightSize * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_neighborsTotClE, neighborsTotClE.data(), numEvents * 64 * 58 * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_isMergedPi0, isMergedPi0.data(), numEvents * maxSeeds * sizeof(int8_t), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_expandedMergedPi0Neighbors, expandedMergedPi0Neighbors.data(), expandedMergedPi0AdjListSize * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_expandedMergedPi0NumNeighbors, expandedMergedPi0NumNeighbors.data(), numEvents * maxSeeds * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_expandedMergedPi0Weights, expandedMergedPi0Weights.data(), expandedMergedPi0WeightsSize * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_numMergedPi0, numMergedPi0.data(), numEvents * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_adjList, flatAdjList, adjListSize * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_adjListSizes, adjListSizes, numEvents * maxSeeds * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_Seeds, Seeds, SeedSize * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_numSeeds, numSeeds, numEvents * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_rows, rows, totalNumberOfDigits * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_cols, cols, totalNumberOfDigits * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_energies, energies, totalNumberOfDigits * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_flatWeights, flatWeights, weightSize * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_neighborsTotClE, neighborsTotClE, numEvents * 64 * 58 * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_isMergedPi0, isMergedPi0, numEvents * maxSeeds * sizeof(int8_t), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_expandedMergedPi0Neighbors, expandedMergedPi0Neighbors, expandedMergedPi0AdjListSize * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_expandedMergedPi0NumNeighbors, expandedMergedPi0NumNeighbors, numEvents * maxSeeds * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_expandedMergedPi0Weights, expandedMergedPi0Weights, expandedMergedPi0WeightsSize * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_numMergedPi0, numMergedPi0, numEvents * sizeof(int), cudaMemcpyHostToDevice);
 
     // Kernel configuration
     dim3 blockSize = dim3(8, 32); // will use 8 threads for each digit
 
-    addNodeToGraphCUDANEventsWithMergedPi0V2<<<numEvents, blockSize>>>(d_numDigits, d_digitsOffsets, d_adjList, d_adjListSizes, d_Seeds, d_numSeeds, maxSeeds, d_rows, d_cols, d_energies, d_flatWeights, d_neighborsTotClE, d_isMergedPi0, d_numMergedPi0);
-    cudaMemcpy(isMergedPi0.data(), d_isMergedPi0, numEvents * maxSeeds * sizeof(int8_t), cudaMemcpyDeviceToHost);
-    cudaMemcpy(numMergedPi0.data(), d_numMergedPi0, numEvents * sizeof(int), cudaMemcpyDeviceToHost);
+    addNodeToGraphCUDANEventsWithMergedPi0V2<<<numEvents, blockSize>>>(d_numDigits, d_digitsOffsets, d_adjList, d_adjListSizes, d_Seeds, d_numSeeds, maxSeeds, d_rows, d_cols, d_energies, d_neighborsTotClE, d_isMergedPi0, d_numMergedPi0);
+    cudaMemcpy(isMergedPi0, d_isMergedPi0, numEvents * maxSeeds * sizeof(int8_t), cudaMemcpyDeviceToHost);
+    cudaMemcpy(numMergedPi0, d_numMergedPi0, numEvents * sizeof(int), cudaMemcpyDeviceToHost);
     cudaDeviceSynchronize();
     
-    std::vector<int> Pi0Indexes(numEvents * maxSeeds);
-    prefixSumPi0sIndexes(numEvents, maxSeeds, isMergedPi0, Pi0Indexes); // entonces no uso el de numPi0s?
+    int *Pi0Indexes;
+    cudaMallocHost((void**)&Pi0Indexes, numEvents * maxSeeds * sizeof(int));
+
+    prefixSumPi0sIndexesPinned(numEvents, maxSeeds, isMergedPi0, Pi0Indexes); // entonces no uso el de numPi0s?
     
     // for (int i = 0; i < numMergedPi0[0]; ++i) {
     //     std::cout << "Merged Pi0: " << i << " at index: " << Pi0Indexes[i] << " with direction: " << int(isMergedPi0[Pi0Indexes[i]]) << std::endl;
@@ -805,18 +830,18 @@ void GraphInsertionNEventsWithPi0V2(
 
     int *d_Pi0Indexes;
     cudaMalloc(&d_Pi0Indexes, numEvents * maxSeeds * sizeof(int));
-    cudaMemcpy(d_Pi0Indexes, Pi0Indexes.data(), numEvents * maxSeeds * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_Pi0Indexes, Pi0Indexes, numEvents * maxSeeds * sizeof(int), cudaMemcpyHostToDevice);
 
-    expandPi0sNeighborsV1<<<numEvents, dim3(8,32)>>>(d_numDigits, d_digitsOffsets, d_rows, d_cols, d_energies, d_Seeds, maxSeeds, d_neighborsTotClE,  d_numMergedPi0, d_Pi0Indexes, d_isMergedPi0, d_expandedMergedPi0Neighbors, d_expandedMergedPi0NumNeighbors, d_expandedMergedPi0Weights);
+    expandPi0sNeighborsV1<<<numEvents, dim3(8,32)>>>(d_numDigits, d_digitsOffsets, d_rows, d_cols, d_energies, d_Seeds, maxSeeds, d_neighborsTotClE,  d_numMergedPi0, d_Pi0Indexes, d_isMergedPi0, d_expandedMergedPi0Neighbors, d_expandedMergedPi0NumNeighbors);
 
     // Copy results back to the host
-    cudaMemcpy(flatAdjList.data(), d_adjList, adjListSize * sizeof(int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(adjListSizes.data(), d_adjListSizes, numEvents * maxSeeds * sizeof(int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(Seeds.data(), d_Seeds, SeedSize * sizeof(int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(numSeeds.data(), d_numSeeds, numEvents * sizeof(int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(neighborsTotClE.data(), d_neighborsTotClE, numEvents * 64 * 58 * sizeof(int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(expandedMergedPi0Neighbors.data(), d_expandedMergedPi0Neighbors, expandedMergedPi0AdjListSize * sizeof(int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(expandedMergedPi0NumNeighbors.data(), d_expandedMergedPi0NumNeighbors, numEvents * maxSeeds * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(flatAdjList, d_adjList, adjListSize * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(adjListSizes, d_adjListSizes, numEvents * maxSeeds * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(Seeds, d_Seeds, SeedSize * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(numSeeds, d_numSeeds, numEvents * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(neighborsTotClE, d_neighborsTotClE, numEvents * 64 * 58 * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(expandedMergedPi0Neighbors, d_expandedMergedPi0Neighbors, expandedMergedPi0AdjListSize * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(expandedMergedPi0NumNeighbors, d_expandedMergedPi0NumNeighbors, numEvents * maxSeeds * sizeof(int), cudaMemcpyDeviceToHost);
 
     error = cudaGetLastError();
     if (error != cudaSuccess) {
@@ -825,36 +850,55 @@ void GraphInsertionNEventsWithPi0V2(
 
     calculateWeightsV1<<<numEvents, dim3(8,32)>>>(d_numSeeds, d_Seeds, maxSeeds, d_adjList, d_adjListSizes, d_flatWeights, d_isMergedPi0, d_expandedMergedPi0Neighbors, d_expandedMergedPi0NumNeighbors, d_expandedMergedPi0Weights, d_neighborsTotClE);
 
-    cudaMemcpy(flatWeights.data(), d_flatWeights, weightSize * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(expandedMergedPi0Weights.data(), d_expandedMergedPi0Weights, expandedMergedPi0WeightsSize * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(flatWeights, d_flatWeights, weightSize * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(expandedMergedPi0Weights, d_expandedMergedPi0Weights, expandedMergedPi0WeightsSize * sizeof(float), cudaMemcpyDeviceToHost);
 
     error = cudaGetLastError();
     if (error != cudaSuccess) {
         std::cerr << "calculateWeightsV1: CUDA error: " << cudaGetErrorString(error) << std::endl;
     }
 
-    for (int i = 0; i < numSeeds[0]; i++) {
-        std::cout << "Seed: " << i << " is at (" << Seeds[i*3] << ", " << Seeds[i*3+1] << ") with energy " << Seeds[i*3+2] << 
-            " and has " << adjListSizes[i] << " neighbors. Is merged pi0: " << int(isMergedPi0[i]) << ". Expanded neighbors: " << expandedMergedPi0NumNeighbors[i] << ". Cluster energy: " << neighborsTotClE[Seeds[i*3] * 64 + Seeds[i*3+1]] << std::endl;
-        for (int j = 0; j < adjListSizes[i]; j++) {
-            std::cout << "Neighbor " << j << " is at (" << flatAdjList[i*8*3 + j*3] << ", " << flatAdjList[i*8*3 + j*3+1] << ") with energy " << flatAdjList[i*8*3 + j*3+2] << " and weight " << flatWeights[i*8 + j] << ". Total cluster energy: " << neighborsTotClE[flatAdjList[i*8*3 + j*3] * 64 + flatAdjList[i*8*3 + j*3+1] ] << ". Neighbor weight: " << flatWeights[i*8 + j] << std::endl;
-        }
-        for (int j = 0; j < expandedMergedPi0NumNeighbors[i]; j++) {
-            std::cout << "Expanded neighbor " << j << " is at (" << expandedMergedPi0Neighbors[i*5*3 + j*3] << ", " << expandedMergedPi0Neighbors[i*5*3 + j*3+1] << ") with energy " << expandedMergedPi0Neighbors[i*5*3 + j*3+2] << " and weight " << expandedMergedPi0Weights[i*5 + j] << std::endl;
-        }
-    }
+    // for (int i = 0; i < numSeeds[0]; i++) {
+    //     std::cout << "Seed: " << i << " is at (" << Seeds[i*3] << ", " << Seeds[i*3+1] << ") with energy " << Seeds[i*3+2] << 
+    //         " and has " << adjListSizes[i] << " neighbors. Is merged pi0: " << int(isMergedPi0[i]) << ". Expanded neighbors: " << expandedMergedPi0NumNeighbors[i] << ". Cluster energy: " << neighborsTotClE[Seeds[i*3] * 64 + Seeds[i*3+1]] << std::endl;
+    //     for (int j = 0; j < adjListSizes[i]; j++) {
+    //         std::cout << "Neighbor " << j << " is at (" << flatAdjList[i*8*3 + j*3] << ", " << flatAdjList[i*8*3 + j*3+1] << ") with energy " << flatAdjList[i*8*3 + j*3+2] << " and weight " << flatWeights[i*8 + j] << ". Total cluster energy: " << neighborsTotClE[flatAdjList[i*8*3 + j*3] * 64 + flatAdjList[i*8*3 + j*3+1] ] << ". Neighbor weight: " << flatWeights[i*8 + j] << std::endl;
+    //     }
+    //     for (int j = 0; j < expandedMergedPi0NumNeighbors[i]; j++) {
+    //         std::cout << "Expanded neighbor " << j << " is at (" << expandedMergedPi0Neighbors[i*5*3 + j*3] << ", " << expandedMergedPi0Neighbors[i*5*3 + j*3+1] << ") with energy " << expandedMergedPi0Neighbors[i*5*3 + j*3+2] << " and weight " << expandedMergedPi0Weights[i*5 + j] << std::endl;
+    //     }
+    // }
 
-    for (int i = 0; i < numEvents; ++i) { 
-        std::vector<int> subAdjList(flatAdjList.begin() + i * maxSeeds * 8 * 3, flatAdjList.begin() + (i+1) * maxSeeds * 8 * 3);
-        std::vector<int> subAdjListSizes(adjListSizes.begin() + i * maxSeeds, adjListSizes.begin() + (i+1) * maxSeeds);
-        std::vector<int> subFlatWeights(flatWeights.begin() + i * maxSeeds * 8, flatWeights.begin() + (i+1) * maxSeeds * 8);
-        std::vector<int> subSeeds(Seeds.begin() + i * maxSeeds * 3, Seeds.begin() + (i+1) * maxSeeds * 3);
+    // for (int i = 0; i < numEvents; ++i) { 
+    //     std::vector<int> subAdjList(flatAdjList.begin() + i * maxSeeds * 8 * 3, flatAdjList.begin() + (i+1) * maxSeeds * 8 * 3);
+    //     std::vector<int> subAdjListSizes(adjListSizes.begin() + i * maxSeeds, adjListSizes.begin() + (i+1) * maxSeeds);
+    //     std::vector<int> subFlatWeights(flatWeights.begin() + i * maxSeeds * 8, flatWeights.begin() + (i+1) * maxSeeds * 8);
+    //     std::vector<int> subSeeds(Seeds.begin() + i * maxSeeds * 3, Seeds.begin() + (i+1) * maxSeeds * 3);
 
-        // graphs[i].rebuildGraph(subAdjList, subAdjListSizes, subFlatWeights, subSeeds, numSeeds[i]);
-        // graphs[i].GraphSummary();
-    }
+    //     // graphs[i].rebuildGraph(subAdjList, subAdjListSizes, subFlatWeights, subSeeds, numSeeds[i]);
+    //     // graphs[i].GraphSummary();
+    // }
 
-    // Free memory
+    // Free host memory
+    cudaFreeHost(rows);
+    cudaFreeHost(cols);
+    cudaFreeHost(energies);
+    cudaFreeHost(Seeds);
+    cudaFreeHost(adjListSizes);
+    cudaFreeHost(flatAdjList);
+    cudaFreeHost(neighborsTotClE);
+    cudaFreeHost(flatWeights);
+    cudaFreeHost(numSeeds);
+    cudaFreeHost(isMergedPi0);
+    cudaFreeHost(mergedPi0AdjListSizes);
+    cudaFreeHost(expandedMergedPi0Neighbors);
+    cudaFreeHost(expandedMergedPi0NumNeighbors);
+    cudaFreeHost(expandedMergedPi0Weights);
+    cudaFreeHost(numMergedPi0);
+    cudaFreeHost(Pi0Indexes);
+
+
+    // Free device memory
     cudaFree(d_numDigits);
     cudaFree(d_digitsOffsets);
     cudaFree(d_adjList);
