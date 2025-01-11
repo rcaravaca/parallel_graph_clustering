@@ -856,9 +856,6 @@ __global__ void expandPi0sNeighborsV1(int* numDigits, int* digitsOffsets, const 
         }
 
         if (!__any_sync(subgroupMask, neighborEnergy > 0)) {
-            if (threadIdx.x == 0) {
-                // printf("Expanding merged Pi0 at (%d, %d - Seed %d) with energy %d in direction %d which has energy %d has no neighbor to add\n", seedRow, seedCol, mergedPi0Indexes[pi0], seedEnergy, direction, pi0Energy);
-            }
             continue;
         }
 
@@ -866,7 +863,7 @@ __global__ void expandPi0sNeighborsV1(int* numDigits, int* digitsOffsets, const 
 
         // add recently added cluster energy to original 3x3 neighbors, and add original cluster energy to recently added neighbors
 
-        int expandedNeighborsEnergy = neighborEnergy;
+        int expandedNeighborsEnergy = addedAsPi0Neighbor ? neighborEnergy : 0;
         for (int offset = 4; offset > 0; offset /= 2) {
             expandedNeighborsEnergy += __shfl_down_sync(subgroupMask, expandedNeighborsEnergy, offset);
         }
