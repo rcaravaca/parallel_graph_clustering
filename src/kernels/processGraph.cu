@@ -593,7 +593,7 @@ __global__ void addNodeToGraphCUDANEventsWithMergedPi0V1(int* numDigits, int* di
 
 // 8x32 threads per block
 // process 32 digits at a time, using 8 threads per digit
-__global__ void addNodeToGraphCUDANEventsWithMergedPi0V2(int* numDigits, int* digitsOffsets, int* adjList, int* adjListSizes, int* Seeds, int* numSeeds, int maxSeeds, const int* rows, const int* cols, const int* energies, int* neighborsTotClE, int8_t* isMergedPi0, int* numMergedPi0s) {
+__global__ void addNodeToGraphCUDANEventsWithMergedPi0V2(int* numDigits, int* digitsOffsets, int* adjList, int* adjListSizes, int* Seeds, int* numSeeds, int maxSeeds, const int* rows, const int* cols, const int* energies, int* neighborsTotClE, int8_t* isMergedPi0, int* numMergedPi0s, int* overlapTracking) {
 
     int eventIdx = blockIdx.x;
 
@@ -625,6 +625,7 @@ __global__ void addNodeToGraphCUDANEventsWithMergedPi0V2(int* numDigits, int* di
     adjListSizes = adjListSizes + eventIdx * maxSeeds;
     Seeds = Seeds + eventIdx * maxSeeds * 3;
     neighborsTotClE = neighborsTotClE + eventIdx * 58 * 64; // should this be 58 * 64? I guess but eventually this will be bigger to reach 6016
+    overlapTracking = overlapTracking + eventIdx * 58 * 64;
 
     isMergedPi0 = isMergedPi0 + eventIdx * maxSeeds;
 
@@ -673,8 +674,8 @@ __global__ void addNodeToGraphCUDANEventsWithMergedPi0V2(int* numDigits, int* di
             continue; // some neighbor is greater, so this is not a local maxima
         }
 
-        // clusters with 0 or just 1 neighbor are not interesting
-        if (__popc(__ballot_sync(subgroupMask, neighborEnergy > 0)) <= 1) {
+        // clusters with 0 neighbors are not interesting
+        if (__popc(__ballot_sync(subgroupMask, neighborEnergy > 0)) < 1) {
             continue;
         }
 
@@ -724,6 +725,7 @@ __global__ void addNodeToGraphCUDANEventsWithMergedPi0V2(int* numDigits, int* di
             adjList[offset + 1] = neighborCol;
             adjList[offset + 2] = caloValues[neighborRow][neighborCol];
             atomicAdd(&neighborsTotClE[neighborRow * 64 + neighborCol], totalClusterEnergy);
+            // atomicAdd(&overlapTracking[neighborRow * 64 + neighborCol], 1);
         }
 
         __syncwarp();
@@ -756,13 +758,15 @@ __global__ void addNodeToGraphCUDANEventsWithMergedPi0V2(int* numDigits, int* di
             if (caloValues[row][col] > 1000 && caloValues[neighborRow][neighborCol] > 0.25 * caloValues[row][col]) {
                 int mergedPi0Idx = atomicAdd(&numMergedPi0s[eventIdx], 1); // TODO: value not used
                 isMergedPi0[seedNumber] = threadIdx.x; // position will be known with constant values defined in the header
+            } else {
+                isMergedPi0[seedNumber] = -1; // TODO: this default value should be set on host probably
             }
         }
     }
 }
 
-__global__ void expandPi0sNeighborsV1(int* numDigits, int* digitsOffsets, const int* rows, const int* cols, const int* energies, int* Seeds, int maxSeeds, int* neighborsTotClE, int* numMergedPi0s, int* mergedPi0Indexes, int8_t* mergedPi0sDirection, int* expandedMergedPi0Neighbors, int* expandedMergedPi0NeighborsSizes) {
-    
+__global__ void expandPi0sNeighborsV1(int* numDigits, int* digitsOffsets, const int* rows, const int* cols, const int* energies, int* Seeds, int maxSeeds, int* neighborsTotClE, int* numMergedPi0s, int* mergedPi0Indexes, int8_t* mergedPi0sDirection, int* expandedMergedPi0Neighbors, int* expandedMergedPi0NeighborsSizes, int* overlapTracking) {
+
     int eventIdx = blockIdx.x;
 
     __shared__ int caloValues[58][64];
@@ -782,6 +786,7 @@ __global__ void expandPi0sNeighborsV1(int* numDigits, int* digitsOffsets, const 
     cols = cols + digitsOffsets[eventIdx];
     energies = energies + digitsOffsets[eventIdx];
     neighborsTotClE = neighborsTotClE + eventIdx * 58 * 64;
+    overlapTracking = overlapTracking + eventIdx * 58 * 64; 
     Seeds = Seeds + eventIdx * maxSeeds * 3;
 
     // now fill in the calo values
@@ -884,6 +889,7 @@ __global__ void expandPi0sNeighborsV1(int* numDigits, int* digitsOffsets, const 
             if (caloValues[neighborRow][neighborCol] > 0) { // only if already has some energy, otherwise it was not used
                 // printf("Adding expanded energy to neighbor at (%d, %d) from seed at (%d, %d). Adding %d to %d\n", neighborRow, neighborCol, seedRow, seedCol, expandedNeighborsEnergy, neighborsTotClE[neighborRow * 64 + neighborCol]);
                 atomicAdd(&neighborsTotClE[neighborRow * 64 + neighborCol], expandedNeighborsEnergy);
+                // atomicAdd(&overlapTracking[neighborRow * 64 + neighborCol], 1);
             }
         }
 

@@ -65,7 +65,8 @@ __global__ void addNodeToGraphCUDANEventsWithMergedPi0V2(
     const int* energies,
     int* neighborsTotClE,
     int8_t* isMergedPi0,
-    int* numMergedPi0s);
+    int* numMergedPi0s,
+    int* overlapTracking);
 
 // constanst used to identify the position of merged pi0s
 enum MergedPi0Positions : int8_t {
@@ -92,7 +93,8 @@ __global__ void expandPi0sNeighborsV1(
     int* mergedPi0Indexes,
     int8_t* mergedPi0sDirection,
     int* expandedMergedPi0Neighbors,
-    int* expandedMergedPi0NeighborsSizes);
+    int* expandedMergedPi0NeighborsSizes,
+    int* overlapTracking);
 
 __global__ void calculateWeightsV1(
     int* d_numSeeds, 

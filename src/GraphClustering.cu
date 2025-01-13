@@ -24,6 +24,7 @@ void prefixSumPi0sIndexesPinned(int numEvents, int maxSeeds, int8_t* isMergedPi0
                 counter++;
             }
         }
+
     }
 }
 
@@ -762,9 +763,12 @@ void GraphInsertionNEventsWithPi0V2(
     int *numMergedPi0;
     cudaMallocHost((void**)&numMergedPi0, numEvents * sizeof(int));
 
+    int *overlapTracking;
+    cudaMallocHost((void**)&overlapTracking, numEvents * 64 * 58 * sizeof(int));
+
     // Allocate memory on the device
     int *d_numDigits, *d_digitsOffsets, *d_adjList, *d_adjListSizes, *d_Seeds, *d_numSeeds, *d_rows, *d_cols, *d_energies,
-            *d_neighborsTotClE, *d_expandedMergedPi0Neighbors, *d_expandedMergedPi0NumNeighbors, *d_numMergedPi0;
+            *d_neighborsTotClE, *d_expandedMergedPi0Neighbors, *d_expandedMergedPi0NumNeighbors, *d_numMergedPi0, *d_overlapTracking;
     float *d_flatWeights, *d_expandedMergedPi0Weights;
     int8_t *d_isMergedPi0;
     cudaMalloc(&d_numDigits, numEvents * sizeof(int));
@@ -783,6 +787,7 @@ void GraphInsertionNEventsWithPi0V2(
     cudaMalloc(&d_expandedMergedPi0NumNeighbors, numEvents * maxSeeds * sizeof(int));
     cudaMalloc(&d_expandedMergedPi0Weights, expandedMergedPi0WeightsSize * sizeof(float));
     cudaMalloc(&d_numMergedPi0, numEvents * sizeof(int));
+    cudaMalloc(&d_overlapTracking, numEvents * 64 * 58 * sizeof(int));
 
     // int totalBytesReserved = numEvents * sizeof(int) + numEvents * sizeof(int) + numEvents * sizeof(int) + adjListSize * sizeof(int) + numEvents * maxSeeds * sizeof(int) + SeedSize * sizeof(int) + numEvents * sizeof(int) + rows.size() * sizeof(int) + cols.size() * sizeof(int) + energies.size() * sizeof(int) + weightSize * sizeof(int) + numEvents * maxSeeds * sizeof(uint8_t) + numEvents * maxSeeds * sizeof(int) + expandedMergedPi0AdjListSize * sizeof(int) + expandedMergedPi0WeightsSize * sizeof(int) + numEvents * sizeof(int);
 
@@ -809,7 +814,7 @@ void GraphInsertionNEventsWithPi0V2(
     // Kernel configuration
     dim3 blockSize = dim3(8, 32); // will use 8 threads for each digit
 
-    addNodeToGraphCUDANEventsWithMergedPi0V2<<<numEvents, blockSize>>>(d_numDigits, d_digitsOffsets, d_adjList, d_adjListSizes, d_Seeds, d_numSeeds, maxSeeds, d_rows, d_cols, d_energies, d_neighborsTotClE, d_isMergedPi0, d_numMergedPi0);
+    addNodeToGraphCUDANEventsWithMergedPi0V2<<<numEvents, blockSize>>>(d_numDigits, d_digitsOffsets, d_adjList, d_adjListSizes, d_Seeds, d_numSeeds, maxSeeds, d_rows, d_cols, d_energies, d_neighborsTotClE, d_isMergedPi0, d_numMergedPi0, d_overlapTracking);
     cudaMemcpy(isMergedPi0, d_isMergedPi0, numEvents * maxSeeds * sizeof(int8_t), cudaMemcpyDeviceToHost);
     cudaMemcpy(numMergedPi0, d_numMergedPi0, numEvents * sizeof(int), cudaMemcpyDeviceToHost);
     cudaDeviceSynchronize();
@@ -832,7 +837,7 @@ void GraphInsertionNEventsWithPi0V2(
     cudaMalloc(&d_Pi0Indexes, numEvents * maxSeeds * sizeof(int));
     cudaMemcpy(d_Pi0Indexes, Pi0Indexes, numEvents * maxSeeds * sizeof(int), cudaMemcpyHostToDevice);
 
-    expandPi0sNeighborsV1<<<numEvents, dim3(8,32)>>>(d_numDigits, d_digitsOffsets, d_rows, d_cols, d_energies, d_Seeds, maxSeeds, d_neighborsTotClE,  d_numMergedPi0, d_Pi0Indexes, d_isMergedPi0, d_expandedMergedPi0Neighbors, d_expandedMergedPi0NumNeighbors);
+    expandPi0sNeighborsV1<<<numEvents, dim3(8,32)>>>(d_numDigits, d_digitsOffsets, d_rows, d_cols, d_energies, d_Seeds, maxSeeds, d_neighborsTotClE,  d_numMergedPi0, d_Pi0Indexes, d_isMergedPi0, d_expandedMergedPi0Neighbors, d_expandedMergedPi0NumNeighbors, overlapTracking);
 
     // Copy results back to the host
     cudaMemcpy(flatAdjList, d_adjList, adjListSize * sizeof(int), cudaMemcpyDeviceToHost);
@@ -862,10 +867,18 @@ void GraphInsertionNEventsWithPi0V2(
     //     std::cout << "Seed: " << i << " is at (" << Seeds[i*3] << ", " << Seeds[i*3+1] << ") with energy " << Seeds[i*3+2] << 
     //         " and has " << adjListSizes[i] << " neighbors. Is merged pi0: " << int(isMergedPi0[i]) << ". Expanded neighbors: " << expandedMergedPi0NumNeighbors[i] << ". Cluster energy: " << neighborsTotClE[Seeds[i*3] * 64 + Seeds[i*3+1]] << std::endl;
     //     for (int j = 0; j < adjListSizes[i]; j++) {
-    //         std::cout << "Neighbor " << j << " is at (" << flatAdjList[i*8*3 + j*3] << ", " << flatAdjList[i*8*3 + j*3+1] << ") with energy " << flatAdjList[i*8*3 + j*3+2] << " and weight " << flatWeights[i*8 + j] << ". Total cluster energy: " << neighborsTotClE[flatAdjList[i*8*3 + j*3] * 64 + flatAdjList[i*8*3 + j*3+1] ] << ". Neighbor weight: " << flatWeights[i*8 + j] << std::endl;
+    //         std::cout << "Neighbor " << j << " is at (" << flatAdjList[i*8*3 + j*3] << ", " << flatAdjList[i*8*3 + j*3+1] << ") with energy " << flatAdjList[i*8*3 + j*3+2] << " and weight " << flatWeights[i*8 + j] << ". Total cluster energy: " << neighborsTotClE[flatAdjList[i*8*3 + j*3] * 64 + flatAdjList[i*8*3 + j*3+1] ] << ". Neighbor weight: " << flatWeights[i*8 + j] << ". Overlap count: " << overlapTracking[flatAdjList[i*8*3 + j*3] * 64 + flatAdjList[i*8*3 + j*3+1] ] << std::endl;
     //     }
     //     for (int j = 0; j < expandedMergedPi0NumNeighbors[i]; j++) {
-    //         std::cout << "Expanded neighbor " << j << " is at (" << expandedMergedPi0Neighbors[i*5*3 + j*3] << ", " << expandedMergedPi0Neighbors[i*5*3 + j*3+1] << ") with energy " << expandedMergedPi0Neighbors[i*5*3 + j*3+2] << " and weight " << expandedMergedPi0Weights[i*5 + j] << std::endl;
+    //         std::cout << "Expanded neighbor " << j << " is at (" << expandedMergedPi0Neighbors[i*5*3 + j*3] << ", " << expandedMergedPi0Neighbors[i*5*3 + j*3+1] << ") with energy " << expandedMergedPi0Neighbors[i*5*3 + j*3+2] << " and weight " << expandedMergedPi0Weights[i*5 + j] << ". Total cluster energy: " << neighborsTotClE[expandedMergedPi0Neighbors[i*5*3 + j*3] * 64 + expandedMergedPi0Neighbors[i*5*3 + j*3+1] ] << ". Overlap count: " << overlapTracking[expandedMergedPi0Neighbors[i*5*3 + j*3] * 64 + expandedMergedPi0Neighbors[i*5*3 + j*3+1]] << std::endl;
+    //     }
+    // }
+
+    // for (int i = 0; i < numSeeds[0]; i++) {
+    //     // check merged pi0 candidates that did not add any neighbors
+    //     if (isMergedPi0[i] != -1 && expandedMergedPi0NumNeighbors[i] == 0) {
+    //         std::cout << "Seed: " << i << " is at (" << Seeds[i*3] << ", " << Seeds[i*3+1] << ") with energy " << Seeds[i*3+2] << 
+    //             " and was a merged pi0 candidate, but did not add any neighbors. " << std::endl;
     //     }
     // }
 
@@ -896,6 +909,7 @@ void GraphInsertionNEventsWithPi0V2(
     cudaFreeHost(expandedMergedPi0Weights);
     cudaFreeHost(numMergedPi0);
     cudaFreeHost(Pi0Indexes);
+    cudaFreeHost(overlapTracking);
 
 
     // Free device memory
@@ -916,5 +930,5 @@ void GraphInsertionNEventsWithPi0V2(
     cudaFree(d_expandedMergedPi0Weights);
     cudaFree(d_numMergedPi0);
     cudaFree(d_Pi0Indexes);
+    cudaFree(d_overlapTracking);
 }
-
