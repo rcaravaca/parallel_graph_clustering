@@ -725,7 +725,7 @@ __global__ void addNodeToGraphCUDANEventsWithMergedPi0V2(int* numDigits, int* di
             adjList[offset + 1] = neighborCol;
             adjList[offset + 2] = caloValues[neighborRow][neighborCol];
             atomicAdd(&neighborsTotClE[neighborRow * 64 + neighborCol], totalClusterEnergy);
-            // atomicAdd(&overlapTracking[neighborRow * 64 + neighborCol], 1);
+            atomicAdd(&overlapTracking[neighborRow * 64 + neighborCol], 1);
         }
 
         __syncwarp();
@@ -856,6 +856,7 @@ __global__ void expandPi0sNeighborsV1(int* numDigits, int* digitsOffsets, const 
                     expandedMergedPi0Neighbors[offset] = neighborRow;
                     expandedMergedPi0Neighbors[offset + 1] = neighborCol;
                     expandedMergedPi0Neighbors[offset + 2] = neighborEnergy;
+                    atomicAdd(&overlapTracking[neighborRow * 64 + neighborCol], 1); // TODO: this single instructions grows the execution time by 5x
                 }
             }
         }
@@ -887,9 +888,7 @@ __global__ void expandPi0sNeighborsV1(int* numDigits, int* digitsOffsets, const 
 
         if (neighborRow >= 0 && neighborRow < 58 && neighborCol >= 0 && neighborCol < 64) {
             if (caloValues[neighborRow][neighborCol] > 0) { // only if already has some energy, otherwise it was not used
-                // printf("Adding expanded energy to neighbor at (%d, %d) from seed at (%d, %d). Adding %d to %d\n", neighborRow, neighborCol, seedRow, seedCol, expandedNeighborsEnergy, neighborsTotClE[neighborRow * 64 + neighborCol]);
                 atomicAdd(&neighborsTotClE[neighborRow * 64 + neighborCol], expandedNeighborsEnergy);
-                // atomicAdd(&overlapTracking[neighborRow * 64 + neighborCol], 1);
             }
         }
 

@@ -810,6 +810,7 @@ void GraphInsertionNEventsWithPi0V2(
     cudaMemcpy(d_expandedMergedPi0NumNeighbors, expandedMergedPi0NumNeighbors, numEvents * maxSeeds * sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(d_expandedMergedPi0Weights, expandedMergedPi0Weights, expandedMergedPi0WeightsSize * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(d_numMergedPi0, numMergedPi0, numEvents * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_overlapTracking, overlapTracking, numEvents * 64 * 58 * sizeof(int), cudaMemcpyHostToDevice);
 
     // Kernel configuration
     dim3 blockSize = dim3(8, 32); // will use 8 threads for each digit
@@ -837,7 +838,7 @@ void GraphInsertionNEventsWithPi0V2(
     cudaMalloc(&d_Pi0Indexes, numEvents * maxSeeds * sizeof(int));
     cudaMemcpy(d_Pi0Indexes, Pi0Indexes, numEvents * maxSeeds * sizeof(int), cudaMemcpyHostToDevice);
 
-    expandPi0sNeighborsV1<<<numEvents, dim3(8,32)>>>(d_numDigits, d_digitsOffsets, d_rows, d_cols, d_energies, d_Seeds, maxSeeds, d_neighborsTotClE,  d_numMergedPi0, d_Pi0Indexes, d_isMergedPi0, d_expandedMergedPi0Neighbors, d_expandedMergedPi0NumNeighbors, overlapTracking);
+    expandPi0sNeighborsV1<<<numEvents, dim3(8,32)>>>(d_numDigits, d_digitsOffsets, d_rows, d_cols, d_energies, d_Seeds, maxSeeds, d_neighborsTotClE,  d_numMergedPi0, d_Pi0Indexes, d_isMergedPi0, d_expandedMergedPi0Neighbors, d_expandedMergedPi0NumNeighbors, d_overlapTracking);
 
     // Copy results back to the host
     cudaMemcpy(flatAdjList, d_adjList, adjListSize * sizeof(int), cudaMemcpyDeviceToHost);
@@ -857,22 +858,23 @@ void GraphInsertionNEventsWithPi0V2(
 
     cudaMemcpy(flatWeights, d_flatWeights, weightSize * sizeof(float), cudaMemcpyDeviceToHost);
     cudaMemcpy(expandedMergedPi0Weights, d_expandedMergedPi0Weights, expandedMergedPi0WeightsSize * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(overlapTracking, d_overlapTracking, numEvents * 64 * 58 * sizeof(int), cudaMemcpyDeviceToHost);
 
     error = cudaGetLastError();
     if (error != cudaSuccess) {
         std::cerr << "calculateWeightsV1: CUDA error: " << cudaGetErrorString(error) << std::endl;
     }
 
-    // for (int i = 0; i < numSeeds[0]; i++) {
-    //     std::cout << "Seed: " << i << " is at (" << Seeds[i*3] << ", " << Seeds[i*3+1] << ") with energy " << Seeds[i*3+2] << 
-    //         " and has " << adjListSizes[i] << " neighbors. Is merged pi0: " << int(isMergedPi0[i]) << ". Expanded neighbors: " << expandedMergedPi0NumNeighbors[i] << ". Cluster energy: " << neighborsTotClE[Seeds[i*3] * 64 + Seeds[i*3+1]] << std::endl;
-    //     for (int j = 0; j < adjListSizes[i]; j++) {
-    //         std::cout << "Neighbor " << j << " is at (" << flatAdjList[i*8*3 + j*3] << ", " << flatAdjList[i*8*3 + j*3+1] << ") with energy " << flatAdjList[i*8*3 + j*3+2] << " and weight " << flatWeights[i*8 + j] << ". Total cluster energy: " << neighborsTotClE[flatAdjList[i*8*3 + j*3] * 64 + flatAdjList[i*8*3 + j*3+1] ] << ". Neighbor weight: " << flatWeights[i*8 + j] << ". Overlap count: " << overlapTracking[flatAdjList[i*8*3 + j*3] * 64 + flatAdjList[i*8*3 + j*3+1] ] << std::endl;
-    //     }
-    //     for (int j = 0; j < expandedMergedPi0NumNeighbors[i]; j++) {
-    //         std::cout << "Expanded neighbor " << j << " is at (" << expandedMergedPi0Neighbors[i*5*3 + j*3] << ", " << expandedMergedPi0Neighbors[i*5*3 + j*3+1] << ") with energy " << expandedMergedPi0Neighbors[i*5*3 + j*3+2] << " and weight " << expandedMergedPi0Weights[i*5 + j] << ". Total cluster energy: " << neighborsTotClE[expandedMergedPi0Neighbors[i*5*3 + j*3] * 64 + expandedMergedPi0Neighbors[i*5*3 + j*3+1] ] << ". Overlap count: " << overlapTracking[expandedMergedPi0Neighbors[i*5*3 + j*3] * 64 + expandedMergedPi0Neighbors[i*5*3 + j*3+1]] << std::endl;
-    //     }
-    // }
+    for (int i = 0; i < numSeeds[0]; i++) {
+        std::cout << "Seed: " << i << " is at (" << Seeds[i*3] << ", " << Seeds[i*3+1] << ") with energy " << Seeds[i*3+2] << 
+            " and has " << adjListSizes[i] << " neighbors. Is merged pi0: " << int(isMergedPi0[i]) << ". Expanded neighbors: " << expandedMergedPi0NumNeighbors[i] << ". Cluster energy: " << neighborsTotClE[Seeds[i*3] * 64 + Seeds[i*3+1]] << std::endl;
+        for (int j = 0; j < adjListSizes[i]; j++) {
+            std::cout << "Neighbor " << j << " is at (" << flatAdjList[i*8*3 + j*3] << ", " << flatAdjList[i*8*3 + j*3+1] << ") with energy " << flatAdjList[i*8*3 + j*3+2] << " and weight " << flatWeights[i*8 + j] << ". Total cluster energy: " << neighborsTotClE[flatAdjList[i*8*3 + j*3] * 64 + flatAdjList[i*8*3 + j*3+1] ] << ". Neighbor weight: " << flatWeights[i*8 + j] << ". Overlap count: " << overlapTracking[flatAdjList[i*8*3 + j*3] * 64 + flatAdjList[i*8*3 + j*3+1] ] << std::endl;
+        }
+        for (int j = 0; j < expandedMergedPi0NumNeighbors[i]; j++) {
+            std::cout << "Expanded neighbor " << j << " is at (" << expandedMergedPi0Neighbors[i*5*3 + j*3] << ", " << expandedMergedPi0Neighbors[i*5*3 + j*3+1] << ") with energy " << expandedMergedPi0Neighbors[i*5*3 + j*3+2] << " and weight " << expandedMergedPi0Weights[i*5 + j] << ". Total cluster energy: " << neighborsTotClE[expandedMergedPi0Neighbors[i*5*3 + j*3] * 64 + expandedMergedPi0Neighbors[i*5*3 + j*3+1] ] << ". Overlap count: " << overlapTracking[expandedMergedPi0Neighbors[i*5*3 + j*3] * 64 + expandedMergedPi0Neighbors[i*5*3 + j*3+1]] << std::endl;
+        }
+    }
 
     // for (int i = 0; i < numSeeds[0]; i++) {
     //     // check merged pi0 candidates that did not add any neighbors
