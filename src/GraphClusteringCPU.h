@@ -11,4 +11,9 @@ void GraphInsertionNEventsCPU(
     const std::vector<int>& digitsOffsets,
     const std::vector<int>& numDigits);
 
+void GraphInsertionCPUWithPi0AndWeights(
+    const std::vector<Digit>& digits,
+    const std::vector<int>& digitsOffsets,
+    const std::vector<int>& numDigits);
+
 #endif // ADD_NODE_WITH_CPU_H

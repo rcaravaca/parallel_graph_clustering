@@ -46,6 +46,37 @@ void n_events_cpu() {
     // }
 }
 
+void n_events_cpu_with_pi0_weights() {
+    // Call the function to read the JSON file
+    std::vector<Event> events = readJSON("data/digits_values_10.json");
+    Event event = events[0];
+
+    std::vector<Digit> digits = event.digits;
+    removeDuplicatesAndNegatives(digits);
+
+    std::vector<Digit> digits1Event;
+    std::vector<int> digitsOffsets;
+    std::vector<int> numDigits;
+    std::vector<Graph> graphs;
+
+    for (int i = 0; i < 1; i++) {
+        digitsOffsets.push_back(digits1Event.size()); // Capture the current size before appending
+        digits1Event.insert(digits1Event.end(), digits.begin(), digits.end());
+        numDigits.push_back(digits.size());
+    }
+    
+    // check running time
+    auto startcpu = std::chrono::high_resolution_clock::now();
+    GraphInsertionCPUWithPi0AndWeights(digits1Event, digitsOffsets, numDigits);
+    auto endcpu = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = endcpu - startcpu;
+    std::cout << "Elapsed time CPU: " << elapsed.count() << " seconds" << std::endl;
+
+    // for (int i = 0; i < 1000; i++) {
+    //     graphs[i].GraphSummary();
+    // }
+}
+
 void n_events_gpu() {
     // Call the function to read the JSON file
     std::vector<Event> events = readJSON("data/digits_values_10.json");
@@ -85,20 +116,29 @@ void n_events_gpu() {
 void n_events_gpu_with_pi0s() {
     // Call the function to read the JSON file
     std::vector<Event> events = readJSON("data/digits_values_10.json");
-    Event event = events[0];
+    Event event0 = events[0];
+    Event event1 = events[1];
 
-    std::vector<Digit> digits = event.digits;
-    removeDuplicatesAndNegatives(digits);
+    std::vector<Digit> digits0 = event0.digits;
+    removeDuplicatesAndNegatives(digits0);
+
+    std::vector<Digit> digits1 = event1.digits;
+    removeDuplicatesAndNegatives(digits1);
 
     std::vector<Digit> digits1000Events;
     std::vector<int> digitsOffsets;
     std::vector<int> numDigits;
     std::vector<Graph> graphs;
 
-    for (int i = 0; i < 1000; i++) {
+    for (int i = 0; i < 500; i++) {
         digitsOffsets.push_back(digits1000Events.size()); // Capture the current size before appending
-        digits1000Events.insert(digits1000Events.end(), digits.begin(), digits.end());
-        numDigits.push_back(digits.size());
+        digits1000Events.insert(digits1000Events.end(), digits0.begin(), digits0.end());
+        numDigits.push_back(digits0.size());
+        graphs.push_back(Graph());
+
+        digitsOffsets.push_back(digits1000Events.size()); // Capture the current size before appending
+        digits1000Events.insert(digits1000Events.end(), digits1.begin(), digits1.end());
+        numDigits.push_back(digits1.size());
         graphs.push_back(Graph());
     }
 
@@ -160,6 +200,7 @@ int main() {
     n_events_gpu_with_pi0s();
     // n_events_gpu_base_version();
     // n_events_cpu();
+    // n_events_cpu_with_pi0_weights();
 
     return 0;
 

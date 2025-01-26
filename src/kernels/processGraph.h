@@ -96,6 +96,21 @@ __global__ void expandPi0sNeighborsV1(
     int* expandedMergedPi0NeighborsSizes,
     int* overlapTracking);
 
+__global__ void calculateClustersEnergyV1(
+    int* d_numSeeds, 
+    int* d_Seeds,
+    int maxSeeds,
+    int* d_adjList,
+    int* d_adjListSizes,
+    int* numMergedPi0s,
+    int* mergedPi0Indexes,
+    int8_t* mergedPi0sDirection,
+    int* d_expandedMergedPi0Neighbors,
+    int* d_expandedMergedPi0NumNeighbors,
+    int* d_neighborsTotClE,
+    int* overlapTracking
+);
+
 __global__ void calculateWeightsV1(
     int* d_numSeeds, 
     int* d_Seeds,
